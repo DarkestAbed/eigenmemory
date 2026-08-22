@@ -1,0 +1,29 @@
+# Binaries
+eigenmemory
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+coverage.out
+coverage/
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# EigenMemory runtime artifacts (per project)
+.eigenmemory/eigenmemory.db
+.eigenmemory/eigenmemory.db-*
+
+# Global EigenMemory runtime artifacts (for local testing)
+~/.eigenmemory/

@@ -86,14 +86,14 @@ func SaveIndex(paths *config.Paths) error {
 	for _, entry := range entries {
 		if entry.Type != currentType {
 			currentType = entry.Type
-			sb.WriteString(fmt.Sprintf("\n## %s\n\n", capitalize(string(currentType))))
+			fmt.Fprintf(&sb, "\n## %s\n\n", capitalize(string(currentType)))
 		}
 		dir := wikiPageTypes[entry.Type]
 		tags := ""
 		if len(entry.Tags) > 0 {
 			tags = fmt.Sprintf(" `[%s]`", strings.Join(entry.Tags, ", "))
 		}
-		sb.WriteString(fmt.Sprintf("- [%s](%s/%s.md) — %s%s\n", entry.Title, dir, entry.Slug, entry.OneLiner, tags))
+		fmt.Fprintf(&sb, "- [%s](%s/%s.md) — %s%s\n", entry.Title, dir, entry.Slug, entry.OneLiner, tags)
 	}
 
 	return writeFileAtomic(paths.IndexFile, []byte(sb.String()))

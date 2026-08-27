@@ -31,12 +31,12 @@ type Server struct {
 // NewServer creates a new MCP server bound to stdin/stdout.
 func NewServer(store *core.Store) *Server {
 	return &Server{
-		reader:      bufio.NewReader(os.Stdin),
-		writer:      os.Stdout,
-		tools:       make(map[string]Tool),
-		handlers:    make(map[string]Handler),
-		resources:   make(map[string]Resource),
-		store:       store,
+		reader:    bufio.NewReader(os.Stdin),
+		writer:    os.Stdout,
+		tools:     make(map[string]Tool),
+		handlers:  make(map[string]Handler),
+		resources: make(map[string]Resource),
+		store:     store,
 	}
 }
 
@@ -70,7 +70,9 @@ func (s *Server) Run() error {
 
 		var req Request
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			s.writeError(nil, newError(ErrParseError, "parse error", err.Error()))
+			if err := s.writeError(nil, newError(ErrParseError, "parse error", err.Error())); err != nil {
+				log.Printf("mcp write error response: %v", err)
+			}
 			continue
 		}
 
@@ -83,6 +85,15 @@ func (s *Server) Run() error {
 func (s *Server) handleRequest(req Request) error {
 	if req.JSONRPC != "2.0" {
 		return s.writeError(req.ID, newError(ErrInvalidRequest, "invalid jsonrpc version", nil))
+	}
+
+	// Per the MCP spec, the server must reject requests other than the
+	// initialize handshake itself until initialization has completed.
+	if req.Method != "initialize" && !s.initialized {
+		if isNotification(req.ID) {
+			return nil
+		}
+		return s.writeError(req.ID, newError(ErrServerNotInitialized, "server not initialized", nil))
 	}
 
 	switch req.Method {
@@ -109,6 +120,23 @@ func (s *Server) handleRequest(req Request) error {
 	}
 }
 
+// supportedProtocolVersions lists MCP protocol versions this server
+// understands, newest first. The first entry is offered to clients that
+// request an unrecognized or absent version.
+var supportedProtocolVersions = []string{"2025-06-18", "2024-11-05"}
+
+// negotiateProtocolVersion returns the protocol version the server will use
+// for this session: the client's requested version if supported, otherwise
+// the server's preferred (latest) version.
+func negotiateProtocolVersion(requested string) string {
+	for _, v := range supportedProtocolVersions {
+		if v == requested {
+			return v
+		}
+	}
+	return supportedProtocolVersions[0]
+}
+
 func (s *Server) handleInitialize(req Request) error {
 	var params InitializeParams
 	if len(req.Params) > 0 {
@@ -117,13 +145,8 @@ func (s *Server) handleInitialize(req Request) error {
 		}
 	}
 
-	// Validate protocol version.
-	if params.ProtocolVersion != "" && params.ProtocolVersion != "2024-11-05" {
-		// Be lenient and accept any version for now.
-	}
-
 	result := InitializeResult{
-		ProtocolVersion: "2024-11-05",
+		ProtocolVersion: negotiateProtocolVersion(params.ProtocolVersion),
 		Capabilities: ServerCapabilities{
 			Tools:     &ToolsCapability{},
 			Resources: &ResourcesCapability{},
@@ -134,6 +157,7 @@ func (s *Server) handleInitialize(req Request) error {
 		},
 	}
 
+	s.initialized = true
 	return s.writeResult(req.ID, result)
 }
 

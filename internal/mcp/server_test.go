@@ -47,7 +47,7 @@ func TestInitialize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	go server.Run()
+	go func() { _ = server.Run() }()
 
 	resp, err := readResponse(stdoutR)
 	if err != nil {
@@ -89,7 +89,7 @@ func TestToolsList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	go server.Run()
+	go func() { _ = server.Run() }()
 
 	// Skip initialize response.
 	if _, err := readResponse(stdoutR); err != nil {
@@ -143,7 +143,7 @@ func TestWikiRecall(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	go server.Run()
+	go func() { _ = server.Run() }()
 
 	// Skip initialize response.
 	if _, err := readResponse(stdoutR); err != nil {
@@ -200,7 +200,7 @@ func TestResourcesRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	go server.Run()
+	go func() { _ = server.Run() }()
 
 	// Skip initialize response.
 	if _, err := readResponse(stdoutR); err != nil {
@@ -261,7 +261,7 @@ func TestWikiRemember(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	go server.Run()
+	go func() { _ = server.Run() }()
 
 	// Skip initialize response.
 	if _, err := readResponse(stdoutR); err != nil {
@@ -295,6 +295,259 @@ func TestWikiRemember(t *testing.T) {
 	}
 	if len(hits) != 1 {
 		t.Errorf("hits after remember = %d, want 1", len(hits))
+	}
+}
+
+func TestToolCall_RejectedBeforeInitialize(t *testing.T) {
+	tmp := t.TempDir()
+	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	stdin := &bytes.Buffer{}
+	stdoutR, stdoutW := io.Pipe()
+
+	server := newTestServer(store, stdin, stdoutW)
+	RegisterWikiTools(server)
+
+	// No "initialize" call first.
+	call := ToolCallParams{
+		Name:      "wiki_recall",
+		Arguments: rawJSON(map[string]any{"query": "anything"}),
+	}
+	if err := send(stdin, Request{JSONRPC: "2.0", ID: rawJSON(1), Method: "tools/call", Params: rawJSON(call)}); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() { _ = server.Run() }()
+
+	resp, err := readResponse(stdoutR)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if resp.Error == nil {
+		t.Fatal("expected an error for tools/call before initialize, got none")
+	}
+	if resp.Error.Code != ErrServerNotInitialized {
+		t.Errorf("error code = %d, want %d", resp.Error.Code, ErrServerNotInitialized)
+	}
+}
+
+func TestHandleRequest_NullIDGetsResponse(t *testing.T) {
+	tmp := t.TempDir()
+	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	stdin := &bytes.Buffer{}
+	stdoutR, stdoutW := io.Pipe()
+
+	server := newTestServer(store, stdin, stdoutW)
+	RegisterWikiTools(server)
+
+	// A request with an explicit `"id": null` is NOT a notification per
+	// JSON-RPC 2.0 and must still receive a response.
+	raw := `{"jsonrpc":"2.0","id":null,"method":"initialize"}` + "\n"
+	if _, err := stdin.WriteString(raw); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() { _ = server.Run() }()
+
+	resp, err := readResponse(stdoutR)
+	if err != nil {
+		t.Fatalf("expected a response for an explicit null id, got read error: %v", err)
+	}
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %v", resp.Error)
+	}
+}
+
+func TestNegotiateProtocolVersion(t *testing.T) {
+	cases := []struct {
+		requested string
+		want      string
+	}{
+		{"2024-11-05", "2024-11-05"},
+		{"2025-06-18", "2025-06-18"},
+		{"", supportedProtocolVersions[0]},
+		{"1999-01-01", supportedProtocolVersions[0]},
+	}
+	for _, c := range cases {
+		got := negotiateProtocolVersion(c.requested)
+		if got != c.want {
+			t.Errorf("negotiateProtocolVersion(%q) = %q, want %q", c.requested, got, c.want)
+		}
+	}
+}
+
+func TestWikiRemember_RejectsPathTraversalSlug(t *testing.T) {
+	tmp := t.TempDir()
+	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	stdin := &bytes.Buffer{}
+	stdoutR, stdoutW := io.Pipe()
+
+	server := newTestServer(store, stdin, stdoutW)
+	RegisterWikiTools(server)
+
+	if err := send(stdin, Request{JSONRPC: "2.0", ID: rawJSON(1), Method: "initialize"}); err != nil {
+		t.Fatal(err)
+	}
+
+	const escapeTarget = "/tmp/eigenmemory_mcp_poc.md"
+	os.Remove(escapeTarget)
+	defer os.Remove(escapeTarget)
+
+	call := ToolCallParams{
+		Name: "wiki_remember",
+		Arguments: rawJSON(map[string]any{
+			"fact":      "pwned content from an MCP-level path traversal attempt",
+			"page_type": "entity",
+			"slug":      "../../../../../../tmp/eigenmemory_mcp_poc",
+		}),
+	}
+	if err := send(stdin, Request{JSONRPC: "2.0", ID: rawJSON(2), Method: "tools/call", Params: rawJSON(call)}); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() { _ = server.Run() }()
+
+	if _, err := readResponse(stdoutR); err != nil {
+		t.Fatalf("init response: %v", err)
+	}
+
+	resp, err := readResponse(stdoutR)
+	if err != nil {
+		t.Fatalf("wiki_remember response: %v", err)
+	}
+
+	var result ToolCallResult
+	b, _ := json.Marshal(resp.Result)
+	if err := json.Unmarshal(b, &result); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected wiki_remember to reject a path-traversal slug, got success: %+v", result)
+	}
+	if _, err := os.Stat(escapeTarget); err == nil {
+		t.Fatal("SECURITY REGRESSION: path-traversal slug escaped the wiki directory")
+	}
+}
+
+// TestWikiRemember_SetsStatus is a regression test for C7: page lifecycle
+// status was checked by lint but no tool could ever set it.
+func TestWikiRemember_SetsStatus(t *testing.T) {
+	tmp := t.TempDir()
+	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	stdin := &bytes.Buffer{}
+	stdoutR, stdoutW := io.Pipe()
+
+	server := newTestServer(store, stdin, stdoutW)
+	RegisterWikiTools(server)
+
+	if err := send(stdin, Request{JSONRPC: "2.0", ID: rawJSON(1), Method: "initialize"}); err != nil {
+		t.Fatal(err)
+	}
+	call := ToolCallParams{
+		Name: "wiki_remember",
+		Arguments: rawJSON(map[string]any{
+			"fact":      "This decision is now outdated.",
+			"page_type": "project",
+			"slug":      "old-decision",
+			"status":    "stale",
+		}),
+	}
+	if err := send(stdin, Request{JSONRPC: "2.0", ID: rawJSON(2), Method: "tools/call", Params: rawJSON(call)}); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() { _ = server.Run() }()
+
+	if _, err := readResponse(stdoutR); err != nil {
+		t.Fatalf("init response: %v", err)
+	}
+	resp, err := readResponse(stdoutR)
+	if err != nil {
+		t.Fatalf("wiki_remember response: %v", err)
+	}
+	if resp.Error != nil {
+		t.Fatalf("wiki_remember error: %v", resp.Error)
+	}
+
+	page, err := store.LoadPage(types.PageTypeProject, "old-decision")
+	if err != nil {
+		t.Fatalf("LoadPage: %v", err)
+	}
+	if page.Frontmatter.Status != types.PageStatusStale {
+		t.Errorf("Status = %q, want %q", page.Frontmatter.Status, types.PageStatusStale)
+	}
+}
+
+func TestWikiRemember_RejectsInvalidStatus(t *testing.T) {
+	tmp := t.TempDir()
+	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	stdin := &bytes.Buffer{}
+	stdoutR, stdoutW := io.Pipe()
+
+	server := newTestServer(store, stdin, stdoutW)
+	RegisterWikiTools(server)
+
+	if err := send(stdin, Request{JSONRPC: "2.0", ID: rawJSON(1), Method: "initialize"}); err != nil {
+		t.Fatal(err)
+	}
+	call := ToolCallParams{
+		Name: "wiki_remember",
+		Arguments: rawJSON(map[string]any{
+			"fact":      "whatever",
+			"page_type": "project",
+			"slug":      "whatever",
+			"status":    "not-a-real-status",
+		}),
+	}
+	if err := send(stdin, Request{JSONRPC: "2.0", ID: rawJSON(2), Method: "tools/call", Params: rawJSON(call)}); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() { _ = server.Run() }()
+
+	if _, err := readResponse(stdoutR); err != nil {
+		t.Fatalf("init response: %v", err)
+	}
+	resp, err := readResponse(stdoutR)
+	if err != nil {
+		t.Fatalf("wiki_remember response: %v", err)
+	}
+	var result ToolCallResult
+	b, _ := json.Marshal(resp.Result)
+	if err := json.Unmarshal(b, &result); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected an error for an invalid status value")
 	}
 }
 

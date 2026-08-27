@@ -19,13 +19,13 @@ import (
 
 // wikiPageTypes maps page type names to their directory names.
 var wikiPageTypes = map[types.PageType]string{
-	types.PageTypeEntity:   "entity",
-	types.PageTypeConcept:  "concept",
-	types.PageTypeSummary:  "summary",
-	types.PageTypeProject:  "project",
-	types.PageTypeFeedback: "feedback",
+	types.PageTypeEntity:    "entity",
+	types.PageTypeConcept:   "concept",
+	types.PageTypeSummary:   "summary",
+	types.PageTypeProject:   "project",
+	types.PageTypeFeedback:  "feedback",
 	types.PageTypeReference: "reference",
-	types.PageTypeUser:     "user",
+	types.PageTypeUser:      "user",
 }
 
 // LoadPage reads and parses a wiki page from disk.
@@ -33,6 +33,9 @@ func LoadPage(paths *config.Paths, pageType types.PageType, slug string) (*types
 	dir, ok := wikiPageTypes[pageType]
 	if !ok {
 		return nil, fmt.Errorf("unknown page type %q", pageType)
+	}
+	if err := ValidateSlug(slug); err != nil {
+		return nil, err
 	}
 	path := filepath.Join(paths.WikiDir, dir, slug+".md")
 	return LoadPageByPath(path)
@@ -69,6 +72,14 @@ func LoadPageByPath(path string) (*types.Page, error) {
 
 // SavePage writes a wiki page to disk and updates its timestamp.
 func SavePage(paths *config.Paths, page *types.Page, pageType types.PageType) error {
+	if err := ValidateSlug(page.Slug); err != nil {
+		return err
+	}
+	// Projection/sync footers (e.g. "_Synced from Claude Code memory ..._") are
+	// a read-time convenience for generated files, never part of the
+	// canonical wiki body. Strip them here so no caller can accidentally
+	// persist one into the store.
+	page.Body = StripFooters(page.Body)
 	now := nowUTC()
 	page.Frontmatter.Updated = now
 	if page.Frontmatter.ID == "" {
@@ -105,6 +116,9 @@ func SavePage(paths *config.Paths, page *types.Page, pageType types.PageType) er
 func PageExists(paths *config.Paths, pageType types.PageType, slug string) bool {
 	dir, ok := wikiPageTypes[pageType]
 	if !ok {
+		return false
+	}
+	if err := ValidateSlug(slug); err != nil {
 		return false
 	}
 	path := filepath.Join(paths.WikiDir, dir, slug+".md")
@@ -152,7 +166,7 @@ func ExtractLinks(body string) []string {
 	md := goldmark.DefaultParser()
 	doc := md.Parse(reader)
 
-	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}

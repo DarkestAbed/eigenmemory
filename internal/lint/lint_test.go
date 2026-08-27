@@ -12,7 +12,9 @@ import (
 
 func TestLintHealthyWiki(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("healthy"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("healthy")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +51,9 @@ func TestLintHealthyWiki(t *testing.T) {
 
 func TestLintDetectsOrphan(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("orphan"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("orphan")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +90,9 @@ func TestLintDetectsOrphan(t *testing.T) {
 
 func TestLintDetectsBrokenLink(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("broken"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("broken")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +129,9 @@ func TestLintDetectsBrokenLink(t *testing.T) {
 
 func TestLintDetectsIndexDrift(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("drift"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("drift")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +170,9 @@ func TestLintDetectsIndexDrift(t *testing.T) {
 
 func TestLintIgnoresLogAndIndex(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("logidx"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("logidx")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
@@ -196,7 +206,9 @@ func TestLintIgnoresLogAndIndex(t *testing.T) {
 
 func TestLintResolvesDriftWithFix(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("fix"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("fix")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
@@ -234,6 +246,58 @@ func TestLintResolvesDriftWithFix(t *testing.T) {
 		if i.Category == CategoryDrift {
 			t.Errorf("drift issue remained after rebuild: %v", i)
 		}
+	}
+}
+
+// TestLintDetectsBrokenRelation is a regression test for C7: the
+// `relations` frontmatter field is now actually validated by lint instead
+// of being silently ignored dead data.
+func TestLintDetectsBrokenRelation(t *testing.T) {
+	tmp := t.TempDir()
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("relations")); err != nil {
+		t.Fatal(err)
+	}
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := wiki.SaveIndex(store.Paths); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.Paths.IndexFile, []byte("# Index\n\n- [Main](project/main.md)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &types.Page{
+		Frontmatter: types.Frontmatter{
+			ID:     types.NewID(),
+			Type:   types.PageTypeProject,
+			Status: types.PageStatusActive,
+			Relations: []types.Relation{
+				{From: "main", To: "does-not-exist", Type: "implements"},
+			},
+		},
+		Slug: "main",
+		Body: "# Main\n\nNo markdown link, just a relation.",
+	}
+	if err := store.SavePage(p, types.PageTypeProject); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(store.Paths, store.Search)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	found := false
+	for _, i := range report.Issues {
+		if i.Category == CategoryBrokenRelation {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a broken-relation issue, got %v", report.Issues)
 	}
 }
 

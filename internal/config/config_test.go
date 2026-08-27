@@ -38,7 +38,7 @@ func TestScopeFromCWD_Project(t *testing.T) {
 	if err := os.Chdir(projectDir); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chdir(tmp)
+	defer func() { _ = os.Chdir(tmp) }()
 
 	scope, paths, err := ScopeFromCWD()
 	if err != nil {
@@ -49,6 +49,44 @@ func TestScopeFromCWD_Project(t *testing.T) {
 	}
 	if paths.Root != emDir {
 		t.Errorf("paths.Root = %q, want %q", paths.Root, emDir)
+	}
+}
+
+func TestValidateProjectName(t *testing.T) {
+	cases := []struct {
+		name    string
+		wantErr bool
+	}{
+		{"", false},
+		{"myproject", false},
+		{"my-project_v2", false},
+		{".", true},
+		{"..", true},
+		{"../../../.ssh", true},
+		{"foo/bar", true},
+		{"foo\\bar", true},
+	}
+	for _, c := range cases {
+		err := ValidateProjectName(c.name)
+		if (err != nil) != c.wantErr {
+			t.Errorf("ValidateProjectName(%q) error = %v, wantErr %v", c.name, err, c.wantErr)
+		}
+	}
+}
+
+func TestLoadConfig_RejectsMaliciousProjectName(t *testing.T) {
+	tmp := t.TempDir()
+	paths := PathsFor(tmp)
+	if err := os.MkdirAll(tmp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	malicious := []byte(`{"name": "../../../../../../.ssh", "version": "0.1.0"}`)
+	if err := os.WriteFile(paths.ConfigFile, malicious, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadConfig(paths); err == nil {
+		t.Fatal("expected LoadConfig to reject a malicious project name, got nil error")
 	}
 }
 

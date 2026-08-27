@@ -34,11 +34,12 @@ type ErrorObject struct {
 
 // Error codes from MCP spec.
 const (
-	ErrParseError     = -32700
-	ErrInvalidRequest = -32600
-	ErrMethodNotFound = -32601
-	ErrInvalidParams  = -32602
-	ErrInternalError  = -32603
+	ErrParseError           = -32700
+	ErrInvalidRequest       = -32600
+	ErrMethodNotFound       = -32601
+	ErrInvalidParams        = -32602
+	ErrInternalError        = -32603
+	ErrServerNotInitialized = -32002
 )
 
 func newError(code int, message string, data any) *ErrorObject {
@@ -65,9 +66,12 @@ func marshalError(id json.RawMessage, err *ErrorObject) ([]byte, error) {
 	return json.Marshal(resp)
 }
 
-// isNotification reports whether a request is a notification (no id).
+// isNotification reports whether a request is a notification. Per JSON-RPC
+// 2.0, a notification is distinguished by the absence of the "id" member
+// entirely — an explicit `"id": null` is a normal request that must still
+// receive a response.
 func isNotification(id json.RawMessage) bool {
-	return len(id) == 0 || string(id) == "null"
+	return len(id) == 0
 }
 
 // rawJSON returns a json.RawMessage for an arbitrary value.
@@ -76,10 +80,3 @@ func rawJSON(v any) json.RawMessage {
 	return b
 }
 
-// requestIDString returns a printable string for a request id.
-func requestIDString(id json.RawMessage) string {
-	if len(id) == 0 {
-		return ""
-	}
-	return string(id)
-}

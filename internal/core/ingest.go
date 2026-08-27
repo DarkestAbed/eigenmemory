@@ -47,6 +47,9 @@ func (s *Store) Ingest(opts IngestOptions) (string, error) {
 	if !isNew {
 		fmt.Printf("Source already exists: %s\n", source.ID[:12])
 	}
+	if err := s.Search.IndexSource(source.ID, source.Path, source.SHA256, source.StoredAt.Format(time.RFC3339)); err != nil {
+		return "", fmt.Errorf("index source: %w", err)
+	}
 
 	slug := wiki.Slugify(name)
 	if slug == "" {

@@ -6,17 +6,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
-	DirName           = ".eigenmemory"
-	ConfigFileName    = "config.json"
-	SourcesDirName    = "sources"
-	WikiDirName       = "wiki"
-	DatabaseFileName  = "eigenmemory.db"
-	GlobalDirName     = ".eigenmemory"
-	IndexFileName     = "index.md"
-	LogFileName       = "log.md"
+	DirName          = ".eigenmemory"
+	ConfigFileName   = "config.json"
+	SourcesDirName   = "sources"
+	WikiDirName      = "wiki"
+	DatabaseFileName = "eigenmemory.db"
+	GlobalDirName    = ".eigenmemory"
+	IndexFileName    = "index.md"
+	LogFileName      = "log.md"
 )
 
 // Scope identifies whether we are operating on project or global memory.
@@ -75,6 +76,23 @@ func ScopeFromCWD() (Scope, *Paths, error) {
 	return ScopeGlobal, PathsFor(globalRoot), nil
 }
 
+// ValidateProjectName rejects project names that could escape the intended
+// directory when used as a path component (e.g. in Claude Code's
+// ~/.claude/projects/<name>/memory/ projection). An empty name is allowed;
+// callers that require a non-empty name check for that separately.
+func ValidateProjectName(name string) error {
+	if name == "" {
+		return nil
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("invalid project name %q", name)
+	}
+	if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+		return fmt.Errorf("invalid project name %q: must not contain path separators or \"..\"", name)
+	}
+	return nil
+}
+
 // LoadConfig reads the project config.json if it exists.
 func LoadConfig(paths *Paths) (Config, error) {
 	data, err := os.ReadFile(paths.ConfigFile)
@@ -87,6 +105,13 @@ func LoadConfig(paths *Paths) (Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
+	}
+	// A repo's config.json is not trusted input: it can be shipped by anyone
+	// the user clones from. Reject a malicious/corrupt project name here
+	// rather than letting it reach a path Join downstream (e.g. reconcile's
+	// Claude Code memory projection).
+	if err := ValidateProjectName(cfg.Name); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", paths.ConfigFile, err)
 	}
 	return cfg, nil
 }

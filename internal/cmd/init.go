@@ -22,6 +22,10 @@ type InitOptions struct {
 
 // Init creates the EigenMemory wiki structure at the requested scope.
 func Init(opts InitOptions) error {
+	if err := config.ValidateProjectName(opts.ProjectName); err != nil {
+		return fmt.Errorf("invalid project name: %w", err)
+	}
+
 	var root string
 	if opts.Root != "" {
 		root = opts.Root

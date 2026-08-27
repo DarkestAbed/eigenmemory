@@ -21,9 +21,8 @@ vendor/
 *~
 .DS_Store
 
-# EigenMemory runtime artifacts (per project)
-.eigenmemory/eigenmemory.db
-.eigenmemory/eigenmemory.db-*
+# EigenMemory store (agent-maintained, per project — never commit)
+.eigenmemory/
 
 # Global EigenMemory runtime artifacts (for local testing)
 ~/.eigenmemory/

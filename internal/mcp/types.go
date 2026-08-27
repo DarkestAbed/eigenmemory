@@ -23,9 +23,9 @@ type InitializeParams struct {
 
 // InitializeResult is the response payload for initialize.
 type InitializeResult struct {
-	ProtocolVersion string         `json:"protocolVersion"`
+	ProtocolVersion string             `json:"protocolVersion"`
 	Capabilities    ServerCapabilities `json:"capabilities"`
-	ServerInfo      ServerInfo       `json:"serverInfo"`
+	ServerInfo      ServerInfo         `json:"serverInfo"`
 }
 
 // ServerCapabilities advertises what the server supports.
@@ -71,11 +71,11 @@ type ToolCallResult struct {
 
 // ContentItem is a single content block in a tool result.
 type ContentItem struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
-	URI  string `json:"uri,omitempty"`
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	URI      string `json:"uri,omitempty"`
 	MimeType string `json:"mimeType,omitempty"`
-	Blob string `json:"blob,omitempty"`
+	Blob     string `json:"blob,omitempty"`
 }
 
 // Resource is the schema for a single resource.

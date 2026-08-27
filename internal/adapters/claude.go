@@ -1,6 +1,8 @@
 package adapters
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,8 +14,20 @@ import (
 	"github.com/javi/eigenmemory/internal/wiki"
 )
 
+// contentHash returns a stable content fingerprint used to detect drift
+// between a wiki page and its Claude Code memory-file projection without
+// relying on filesystem mtimes (which have different precision and origin
+// than the wiki's own `updated` timestamp).
+func contentHash(body string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(body)))
+	return hex.EncodeToString(sum[:])
+}
+
 // ClaudeMemoryPath returns the Claude Code native memory directory for a project.
 func ClaudeMemoryPath(projectName string) string {
+	if projectName == "" || config.ValidateProjectName(projectName) != nil {
+		return ""
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
@@ -86,12 +100,15 @@ func memoryPrefix(pageType types.PageType) string {
 
 // renderMemoryPage converts a wiki page into Claude Code memory file content.
 func renderMemoryPage(page *types.Page, pageType types.PageType) string {
+	cleanBody := wiki.StripFooters(page.Body)
+
 	var sb strings.Builder
 	sb.WriteString("---\n")
 	sb.WriteString(fmt.Sprintf("eigenmemory_id: %s\n", page.Frontmatter.ID))
 	sb.WriteString(fmt.Sprintf("eigenmemory_type: %s\n", pageType))
 	sb.WriteString(fmt.Sprintf("eigenmemory_slug: %s\n", page.Slug))
 	sb.WriteString(fmt.Sprintf("eigenmemory_updated: %s\n", page.Frontmatter.Updated.Format("2006-01-02T15:04:05Z")))
+	sb.WriteString(fmt.Sprintf("eigenmemory_hash: %s\n", contentHash(cleanBody)))
 	if len(page.Frontmatter.Tags) > 0 {
 		sb.WriteString(fmt.Sprintf("tags: [%s]\n", strings.Join(page.Frontmatter.Tags, ", ")))
 	}
@@ -99,9 +116,7 @@ func renderMemoryPage(page *types.Page, pageType types.PageType) string {
 		sb.WriteString(fmt.Sprintf("sources: [%s]\n", strings.Join(page.Frontmatter.Sources, ", ")))
 	}
 	sb.WriteString("---\n\n")
-	// Project the clean body; any sync footer stays in the wiki but is not useful in
-	// the generated memory file.
-	sb.WriteString(wiki.StripFooters(page.Body))
+	sb.WriteString(cleanBody)
 	sb.WriteString("\n\n")
 	sb.WriteString(fmt.Sprintf("_Projected from `.eigenmemory/wiki/%s/%s.md` via EigenMemory._\n", wikiDir(pageType), page.Slug))
 	return sb.String()

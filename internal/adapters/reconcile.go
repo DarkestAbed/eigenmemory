@@ -24,7 +24,18 @@ type MemoryFile struct {
 	Tags     []string
 	Sources  []string
 	Body     string
+	// Hash is the content fingerprint recorded at the time this file was
+	// last projected from the wiki (eigenmemory_hash frontmatter). Empty for
+	// memory files written before this field existed.
+	Hash string
 }
+
+// reconcileConflictMargin is how much newer a memory file's mtime must be
+// than the wiki page's `updated` timestamp before it wins a genuine
+// conflict (both sides changed since the last projection). This avoids
+// false positives from sub-second clock/precision skew between a
+// filesystem mtime and a YAML timestamp.
+const reconcileConflictMargin = 2 * time.Second
 
 // ScanClaudeMemory reads all memory files in the Claude Code memory directory.
 func ScanClaudeMemory(projectName string) ([]MemoryFile, error) {
@@ -90,24 +101,51 @@ func Reconcile(paths *config.Paths, projectName string, dryRun bool) ([]string, 
 			return nil, fmt.Errorf("load wiki page %s/%s: %w", mf.PageType, mf.Slug, err)
 		}
 
-		// Compare body ignoring the auto-appended projection footers.
+		// Compare content by hash rather than raw equality/mtime: a
+		// filesystem mtime and a YAML timestamp are different clocks with
+		// different precision, so comparing them directly (mf.ModTime.After)
+		// produces false positives from clock/precision skew alone.
 		cleanBody := wiki.StripFooters(page.Body)
-		if strings.TrimSpace(cleanBody) == strings.TrimSpace(mf.Body) {
-			continue // Already in sync.
+		wikiHash := contentHash(cleanBody)
+		memHash := contentHash(mf.Body)
+
+		if memHash == wikiHash {
+			continue // Already in sync (content-identical).
 		}
 
-		if mf.ModTime.After(page.Frontmatter.Updated) {
-			actions = append(actions, fmt.Sprintf("update %s/%s from %s", mf.PageType, mf.Slug, mf.Filename))
-			if !dryRun {
-				page.Body = mf.Body + "\n\n" + fmt.Sprintf("_Synced from Claude Code memory `%s` via EigenMemory reconcile._\n", mf.Filename)
-				page.Frontmatter.Tags = mergeTags(page.Frontmatter.Tags, mf.Tags)
-				page.Frontmatter.Sources = mergeUnique(page.Frontmatter.Sources, mf.Sources)
-				if err := wiki.SavePage(paths, page, mf.PageType); err != nil {
-					return nil, fmt.Errorf("save reconciled page: %w", err)
-				}
+		var update bool
+		var reason string
+		switch {
+		case mf.Hash != "" && mf.Hash == wikiHash:
+			// The wiki hasn't changed since this file was last projected;
+			// the memory file was hand-edited since then.
+			update = true
+			reason = fmt.Sprintf("update %s/%s from %s", mf.PageType, mf.Slug, mf.Filename)
+		case mf.Hash != "" && mf.Hash == memHash:
+			// The memory file still matches what was last projected; the
+			// wiki changed elsewhere (e.g. via wiki_remember) since then.
+			// Nothing to merge — regenerating the projection will pick up
+			// the wiki's current content.
+			reason = fmt.Sprintf("skip %s (wiki changed since last projection)", mf.Filename)
+		case mf.ModTime.Sub(page.Frontmatter.Updated) > reconcileConflictMargin:
+			// No usable baseline hash (e.g. a memory file predating this
+			// field) or a genuine conflict where both sides changed: fall
+			// back to an explicit "meaningfully newer" mtime margin rather
+			// than a raw `.After`.
+			update = true
+			reason = fmt.Sprintf("update %s/%s from %s (conflict: memory file is newer)", mf.PageType, mf.Slug, mf.Filename)
+		default:
+			reason = fmt.Sprintf("skip %s (wiki is newer)", mf.Filename)
+		}
+
+		actions = append(actions, reason)
+		if update && !dryRun {
+			page.Body = mf.Body
+			page.Frontmatter.Tags = mergeTags(page.Frontmatter.Tags, mf.Tags)
+			page.Frontmatter.Sources = mergeUnique(page.Frontmatter.Sources, mf.Sources)
+			if err := wiki.SavePage(paths, page, mf.PageType); err != nil {
+				return nil, fmt.Errorf("save reconciled page: %w", err)
 			}
-		} else {
-			actions = append(actions, fmt.Sprintf("skip %s (wiki is newer)", mf.Filename))
 		}
 	}
 
@@ -137,6 +175,7 @@ func parseMemoryFile(path string, modTime time.Time) (MemoryFile, error) {
 			mf.ID = extractFrontmatterValue(front, "eigenmemory_id")
 			mf.Slug = extractFrontmatterValue(front, "eigenmemory_slug")
 			mf.PageType = types.PageType(extractFrontmatterValue(front, "eigenmemory_type"))
+			mf.Hash = extractFrontmatterValue(front, "eigenmemory_hash")
 			mf.Tags = parseListValue(extractFrontmatterValue(front, "tags"))
 			mf.Sources = parseListValue(extractFrontmatterValue(front, "sources"))
 			mf.Body = wiki.StripFooters(strings.TrimSpace(body))

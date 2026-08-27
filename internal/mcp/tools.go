@@ -70,6 +70,10 @@ func RegisterWikiTools(s *Server) {
 					"items":       map[string]any{"type": "string"},
 					"description": "Source IDs or URLs that ground this fact.",
 				},
+				"status": map[string]any{
+					"type":        "string",
+					"description": "Optional page lifecycle status: active, stale, merged, or archived. Leave unset to keep the existing status (new pages default to active).",
+				},
 			},
 			"required": []string{"fact", "page_type"},
 		},
@@ -225,6 +229,7 @@ func handleWikiRemember(ctx context.Context, s *Server, args json.RawMessage) (a
 		Title    string   `json:"title"`
 		Tags     []string `json:"tags"`
 		Sources  []string `json:"sources"`
+		Status   string   `json:"status"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
 		return nil, fmt.Errorf("parse arguments: %w", err)
@@ -245,6 +250,21 @@ func handleWikiRemember(ctx context.Context, s *Server, args json.RawMessage) (a
 		return nil, fmt.Errorf("invalid page_type: %s", params.PageType)
 	}
 
+	var status types.PageStatus
+	if params.Status != "" {
+		status = types.PageStatus(params.Status)
+		validStatus := false
+		for _, st := range []types.PageStatus{types.PageStatusActive, types.PageStatusStale, types.PageStatusMerged, types.PageStatusArchived} {
+			if status == st {
+				validStatus = true
+				break
+			}
+		}
+		if !validStatus {
+			return nil, fmt.Errorf("invalid status: %s", params.Status)
+		}
+	}
+
 	store := s.CurrentStore()
 
 	body := params.Fact
@@ -259,6 +279,9 @@ func handleWikiRemember(ctx context.Context, s *Server, args json.RawMessage) (a
 	}
 	if slug == "" {
 		slug = wiki.Slugify(title)
+	}
+	if err := wiki.ValidateSlug(slug); err != nil {
+		return nil, fmt.Errorf("invalid slug: %w", err)
 	}
 
 	var page *types.Page
@@ -280,6 +303,9 @@ func handleWikiRemember(ctx context.Context, s *Server, args json.RawMessage) (a
 	page.Frontmatter.Type = pageType
 	page.Frontmatter.Tags = uniqueStrings(append(page.Frontmatter.Tags, params.Tags...))
 	page.Frontmatter.Sources = uniqueStrings(append(page.Frontmatter.Sources, params.Sources...))
+	if status != "" {
+		page.Frontmatter.Status = status
+	}
 
 	if err := store.SavePage(page, pageType); err != nil {
 		return nil, fmt.Errorf("save page: %w", err)
@@ -381,6 +407,14 @@ func handleWikiStatus(ctx context.Context, s *Server, args json.RawMessage) (any
 	if err != nil {
 		return nil, fmt.Errorf("count pages: %w", err)
 	}
+	relCount, err := store.Search.CountRelations()
+	if err != nil {
+		return nil, fmt.Errorf("count relations: %w", err)
+	}
+	srcCount, err := store.Search.CountSources()
+	if err != nil {
+		return nil, fmt.Errorf("count sources: %w", err)
+	}
 
 	cfg, err := config.LoadConfig(store.Paths)
 	if err != nil {
@@ -398,8 +432,8 @@ func handleWikiStatus(ctx context.Context, s *Server, args json.RawMessage) (any
 		lastLog = strings.SplitN(entries[0], "\n", 2)[0]
 	}
 
-	info := fmt.Sprintf("Scope: %s\nProject: %s\nIndexed pages: %d\nWiki root: %s\nLast log: %s",
-		scope, cfg.Name, count, store.Paths.Root, lastLog)
+	info := fmt.Sprintf("Scope: %s\nProject: %s\nIndexed pages: %d\nRelations: %d\nSources: %d\nWiki root: %s\nLast log: %s",
+		scope, cfg.Name, count, relCount, srcCount, store.Paths.Root, lastLog)
 
 	return ToolCallResult{
 		Content: []ContentItem{{Type: "text", Text: info}},

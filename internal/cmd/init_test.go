@@ -34,6 +34,55 @@ func TestInit_CreatesStructure(t *testing.T) {
 	}
 }
 
+func TestInit_InvalidProjectName(t *testing.T) {
+	tmp := t.TempDir()
+	if err := Init(InitOptions{
+		ProjectName: "../../../etc",
+		Scope:       config.ScopeProject,
+		Root:        filepath.Join(tmp, ".eigenmemory"),
+	}); err == nil {
+		t.Fatal("expected error for an invalid project name")
+	}
+}
+
+func TestInit_ForceOverExisting(t *testing.T) {
+	tmp := t.TempDir()
+	root := filepath.Join(tmp, ".eigenmemory")
+
+	if err := Init(InitOptions{ProjectName: "forceproj", Scope: config.ScopeProject, Root: root}); err != nil {
+		t.Fatal(err)
+	}
+	// Re-running with --force must succeed and leave existing files
+	// (index.md, CLAUDE.md, AGENTS.md, config.json) alone rather than error.
+	if err := Init(InitOptions{ProjectName: "forceproj", Scope: config.ScopeProject, Root: root, Force: true}); err != nil {
+		t.Fatalf("Init with --force: %v", err)
+	}
+}
+
+func TestInit_GlobalScope(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	if err := Init(InitOptions{ProjectName: "globalproj", Scope: config.ScopeGlobal}); err != nil {
+		t.Fatalf("Init (global): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, config.GlobalDirName)); err != nil {
+		t.Errorf("expected global eigenmemory dir: %v", err)
+	}
+}
+
+func TestInit_ProjectScopeFromCWD(t *testing.T) {
+	tmp := t.TempDir()
+	isolate(t, tmp)
+
+	if err := Init(InitOptions{ProjectName: "cwdproj", Scope: config.ScopeProject}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, config.DirName)); err != nil {
+		t.Errorf("expected .eigenmemory created under cwd: %v", err)
+	}
+}
+
 func TestInit_FailsWhenExists(t *testing.T) {
 	tmp := t.TempDir()
 	root := filepath.Join(tmp, ".eigenmemory")

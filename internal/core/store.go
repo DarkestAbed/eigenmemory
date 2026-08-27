@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/javi/eigenmemory/internal/config"
 	"github.com/javi/eigenmemory/internal/search"
@@ -99,5 +100,16 @@ func (s *Store) RebuildIndex() error {
 			}
 		}
 	}
+
+	sources, err := wiki.ListSources(s.Paths)
+	if err != nil {
+		return err
+	}
+	for _, src := range sources {
+		if err := s.Search.IndexSource(src.ID, src.Path, src.SHA256, src.StoredAt.Format(time.RFC3339)); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

@@ -23,10 +23,11 @@ const (
 
 // Category tags for issues.
 const (
-	CategoryOrphan     = "orphan"
-	CategoryBrokenLink = "broken-link"
-	CategoryStale      = "stale"
-	CategoryDrift      = "index-drift"
+	CategoryOrphan         = "orphan"
+	CategoryBrokenLink     = "broken-link"
+	CategoryStale          = "stale"
+	CategoryDrift          = "index-drift"
+	CategoryBrokenRelation = "broken-relation"
 )
 
 // Issue describes a single wiki health problem.
@@ -144,6 +145,18 @@ func Run(paths *config.Paths, search *search.Store) (*Report, error) {
 					Category: CategoryBrokenLink,
 					Page:     key,
 					Message:  fmt.Sprintf("broken internal link to %q", link),
+				})
+			}
+		}
+
+		for _, rel := range p.Frontmatter.Relations {
+			target := strings.ToLower(strings.TrimSpace(rel.To))
+			if target != "" && !pageExists(allPages, target) {
+				report.Issues = append(report.Issues, Issue{
+					Severity: SeverityError,
+					Category: CategoryBrokenRelation,
+					Page:     key,
+					Message:  fmt.Sprintf("relation %q --%s--> %q points to a page that does not exist", rel.From, rel.Type, rel.To),
 				})
 			}
 		}

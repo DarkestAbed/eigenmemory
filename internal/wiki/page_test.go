@@ -3,6 +3,7 @@ package wiki
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,6 +116,97 @@ func TestPageExists(t *testing.T) {
 
 	if !PageExists(paths, types.PageTypeEntity, "present") {
 		t.Error("PageExists = false for existing page")
+	}
+}
+
+func TestValidateSlug(t *testing.T) {
+	cases := []struct {
+		slug    string
+		wantErr bool
+	}{
+		{"auth-service", false},
+		{"auth-service-v2", false},
+		{"", true},
+		{"../../../../etc/passwd", true},
+		{"../../../../tmp/eigenmemory_pwned", true},
+		{"foo/bar", true},
+		{"foo\\bar", true},
+		{"..", true},
+		{"Auth Service", true}, // not slugified
+	}
+	for _, c := range cases {
+		err := ValidateSlug(c.slug)
+		if (err != nil) != c.wantErr {
+			t.Errorf("ValidateSlug(%q) error = %v, wantErr %v", c.slug, err, c.wantErr)
+		}
+	}
+}
+
+func TestSavePage_RejectsPathTraversalSlug(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	const escapeTarget = "/tmp/eigenmemory_wiki_poc.md"
+	os.Remove(escapeTarget)
+	defer os.Remove(escapeTarget)
+
+	page := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(types.PageTypeEntity),
+		Slug:        "../../../../../../tmp/eigenmemory_wiki_poc",
+		Body:        "# Pwned\n\narbitrary content written by traversal",
+	}
+	if err := SavePage(paths, page, types.PageTypeEntity); err == nil {
+		t.Fatal("expected SavePage to reject a path-traversal slug, got nil error")
+	}
+	if _, err := os.Stat(escapeTarget); err == nil {
+		t.Fatal("SECURITY REGRESSION: path-traversal slug escaped the wiki directory")
+	}
+}
+
+func TestLoadPage_RejectsPathTraversalSlug(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	if _, err := LoadPage(paths, types.PageTypeEntity, "../../../../etc/passwd"); err == nil {
+		t.Fatal("expected LoadPage to reject a path-traversal slug, got nil error")
+	}
+}
+
+func TestPageExists_RejectsPathTraversalSlug(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	if PageExists(paths, types.PageTypeEntity, "../../../../etc/passwd") {
+		t.Error("PageExists = true for a path-traversal slug, want false")
+	}
+}
+
+// TestSavePage_StripsFootersAtWriteTime is a regression test for C6: a
+// projection/sync footer must never make it into the canonical wiki body,
+// regardless of which caller passes one in.
+func TestSavePage_StripsFootersAtWriteTime(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	page := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(types.PageTypeEntity),
+		Slug:        "footer-test",
+		Body: "# Footer Test\n\nSome real content.\n\n" +
+			"_Synced from Claude Code memory `foo.md` via EigenMemory reconcile._\n",
+	}
+	if err := SavePage(paths, page, types.PageTypeEntity); err != nil {
+		t.Fatalf("SavePage: %v", err)
+	}
+
+	loaded, err := LoadPage(paths, types.PageTypeEntity, "footer-test")
+	if err != nil {
+		t.Fatalf("LoadPage: %v", err)
+	}
+	if strings.Contains(loaded.Body, "_Synced from") {
+		t.Errorf("canonical wiki body retained a sync footer: %q", loaded.Body)
+	}
+	if !strings.Contains(loaded.Body, "Some real content") {
+		t.Errorf("SavePage stripped legitimate content along with the footer: %q", loaded.Body)
 	}
 }
 

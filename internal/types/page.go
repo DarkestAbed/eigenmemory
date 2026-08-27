@@ -8,22 +8,22 @@ import (
 type PageType string
 
 const (
-	PageTypeEntity   PageType = "entity"
-	PageTypeConcept  PageType = "concept"
-	PageTypeSummary  PageType = "summary"
-	PageTypeProject  PageType = "project"
-	PageTypeFeedback PageType = "feedback"
+	PageTypeEntity    PageType = "entity"
+	PageTypeConcept   PageType = "concept"
+	PageTypeSummary   PageType = "summary"
+	PageTypeProject   PageType = "project"
+	PageTypeFeedback  PageType = "feedback"
 	PageTypeReference PageType = "reference"
-	PageTypeUser     PageType = "user"
+	PageTypeUser      PageType = "user"
 )
 
 // PageStatus tracks the lifecycle of a page.
 type PageStatus string
 
 const (
-	PageStatusActive  PageStatus = "active"
-	PageStatusStale   PageStatus = "stale"
-	PageStatusMerged  PageStatus = "merged"
+	PageStatusActive   PageStatus = "active"
+	PageStatusStale    PageStatus = "stale"
+	PageStatusMerged   PageStatus = "merged"
 	PageStatusArchived PageStatus = "archived"
 )
 

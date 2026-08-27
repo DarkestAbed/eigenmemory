@@ -29,6 +29,14 @@ func Status() error {
 	if err != nil {
 		return err
 	}
+	relCount, err := store.Search.CountRelations()
+	if err != nil {
+		return err
+	}
+	srcCount, err := store.Search.CountSources()
+	if err != nil {
+		return err
+	}
 
 	cfg, err := config.LoadConfig(paths)
 	if err != nil {
@@ -41,5 +49,7 @@ func Status() error {
 		fmt.Printf("Project:     %s\n", cfg.Name)
 	}
 	fmt.Printf("Indexed pages: %d\n", count)
+	fmt.Printf("Relations:     %d\n", relCount)
+	fmt.Printf("Sources:       %d\n", srcCount)
 	return nil
 }

@@ -13,12 +13,12 @@ import (
 
 // IndexEntry represents a single row in the index catalog.
 type IndexEntry struct {
-	Slug        string
-	Type        types.PageType
-	Title       string
-	OneLiner    string
-	Tags        []string
-	Updated     string
+	Slug     string
+	Type     types.PageType
+	Title    string
+	OneLiner string
+	Tags     []string
+	Updated  string
 }
 
 // LoadIndex parses index.md into a slice of entries.

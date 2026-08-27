@@ -32,6 +32,25 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
+// ValidateSlug rejects slugs that are empty or could escape the wiki
+// directory tree when joined into a filesystem path (path separators, ".."
+// segments, or anything that doesn't round-trip through Slugify unchanged).
+// Apply this at every boundary where a slug is accepted from outside the
+// process (MCP tool arguments, CLI flags) as well as defensively in the page
+// read/write path itself.
+func ValidateSlug(slug string) error {
+	if slug == "" {
+		return fmt.Errorf("slug is empty")
+	}
+	if strings.ContainsAny(slug, `/\`) || strings.Contains(slug, "..") {
+		return fmt.Errorf("invalid slug %q: must not contain path separators or \"..\"", slug)
+	}
+	if Slugify(slug) != slug {
+		return fmt.Errorf("invalid slug %q: must be lowercase alphanumeric with hyphens", slug)
+	}
+	return nil
+}
+
 // StripFooters removes EigenMemory auto-appended footer lines (and any
 // surrounding trailing whitespace) from the end of a markdown body.
 func StripFooters(body string) string {

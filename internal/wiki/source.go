@@ -13,10 +13,10 @@ import (
 
 // Source stores an immutable raw document.
 type Source struct {
-	ID      string
-	SHA256  string
-	Path    string
-	Name    string
+	ID       string
+	SHA256   string
+	Path     string
+	Name     string
 	StoredAt time.Time
 }
 
@@ -57,6 +57,36 @@ func IngestSource(paths *config.Paths, name string, data []byte) (*Source, bool,
 		Name:     name,
 		StoredAt: time.Now().UTC(),
 	}, true, nil
+}
+
+// ListSources enumerates every immutable source on disk under
+// .eigenmemory/sources/. Filenames are the source's SHA-256 id.
+func ListSources(paths *config.Paths) ([]Source, error) {
+	entries, err := os.ReadDir(paths.SourcesDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list sources: %w", err)
+	}
+
+	var out []Source
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			return nil, fmt.Errorf("stat source %s: %w", e.Name(), err)
+		}
+		out = append(out, Source{
+			ID:       e.Name(),
+			SHA256:   e.Name(),
+			Path:     filepath.Join(paths.SourcesDir, e.Name()),
+			StoredAt: info.ModTime().UTC(),
+		})
+	}
+	return out, nil
 }
 
 // LoadSource reads a source from disk by its SHA-256 id.

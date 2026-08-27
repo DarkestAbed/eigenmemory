@@ -36,7 +36,7 @@ func AppendLog(paths *config.Paths, op Operation, subject string, details string
 	if err != nil {
 		return fmt.Errorf("open log: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := f.WriteString(line); err != nil {
 		return fmt.Errorf("write log: %w", err)

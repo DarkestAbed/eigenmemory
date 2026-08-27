@@ -25,7 +25,7 @@ func TestInitialize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenAt: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	stdin := &bytes.Buffer{}
 	stdoutR, stdoutW := io.Pipe()
@@ -69,12 +69,14 @@ func TestInitialize(t *testing.T) {
 
 func TestToolsList(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("test")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	stdin := &bytes.Buffer{}
 	stdoutR, stdoutW := io.Pipe()
@@ -116,12 +118,14 @@ func TestToolsList(t *testing.T) {
 
 func TestWikiRecall(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("test")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := storePage(t, store, "auth-service", "entity", "# Auth Service\n\nHandles login.")
 
@@ -173,7 +177,9 @@ func TestWikiRecall(t *testing.T) {
 
 func TestResourcesRead(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("test")); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(tmp, "wiki"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +190,7 @@ func TestResourcesRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	stdin := &bytes.Buffer{}
 	stdoutR, stdoutW := io.Pipe()
@@ -230,12 +236,14 @@ func TestResourcesRead(t *testing.T) {
 
 func TestWikiRemember(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("test")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	stdin := &bytes.Buffer{}
 	stdoutR, stdoutW := io.Pipe()
@@ -300,12 +308,14 @@ func TestWikiRemember(t *testing.T) {
 
 func TestToolCall_RejectedBeforeInitialize(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("test")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	stdin := &bytes.Buffer{}
 	stdoutR, stdoutW := io.Pipe()
@@ -338,12 +348,14 @@ func TestToolCall_RejectedBeforeInitialize(t *testing.T) {
 
 func TestHandleRequest_NullIDGetsResponse(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("test")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	stdin := &bytes.Buffer{}
 	stdoutR, stdoutW := io.Pipe()
@@ -389,12 +401,14 @@ func TestNegotiateProtocolVersion(t *testing.T) {
 
 func TestWikiRemember_RejectsPathTraversalSlug(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("test")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	stdin := &bytes.Buffer{}
 	stdoutR, stdoutW := io.Pipe()
@@ -407,8 +421,8 @@ func TestWikiRemember_RejectsPathTraversalSlug(t *testing.T) {
 	}
 
 	const escapeTarget = "/tmp/eigenmemory_mcp_poc.md"
-	os.Remove(escapeTarget)
-	defer os.Remove(escapeTarget)
+	_ = os.Remove(escapeTarget)
+	defer func() { _ = os.Remove(escapeTarget) }()
 
 	call := ToolCallParams{
 		Name: "wiki_remember",
@@ -450,12 +464,14 @@ func TestWikiRemember_RejectsPathTraversalSlug(t *testing.T) {
 // status was checked by lint but no tool could ever set it.
 func TestWikiRemember_SetsStatus(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("test")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	stdin := &bytes.Buffer{}
 	stdoutR, stdoutW := io.Pipe()
@@ -503,12 +519,14 @@ func TestWikiRemember_SetsStatus(t *testing.T) {
 
 func TestWikiRemember_RejectsInvalidStatus(t *testing.T) {
 	tmp := t.TempDir()
-	config.SaveConfig(config.PathsFor(tmp), config.Default("test"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("test")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	stdin := &bytes.Buffer{}
 	stdoutR, stdoutW := io.Pipe()

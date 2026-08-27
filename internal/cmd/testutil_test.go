@@ -20,7 +20,7 @@ func isolate(t *testing.T, dir string) {
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chdir(orig) })
+	t.Cleanup(func() { _ = os.Chdir(orig) })
 	t.Setenv("HOME", dir)
 }
 
@@ -40,7 +40,7 @@ func unresolvableScope(t *testing.T) {
 	if err := os.Chdir(tmp); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chdir(orig) })
+	t.Cleanup(func() { _ = os.Chdir(orig) })
 	t.Setenv("HOME", "")
 }
 
@@ -58,7 +58,7 @@ func captureStdout(t *testing.T, fn func() error) (string, error) {
 
 	fnErr := fn()
 
-	w.Close()
+	_ = w.Close()
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, r); err != nil {
 		t.Fatal(err)

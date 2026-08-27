@@ -16,13 +16,15 @@ import (
 func TestReconcileOnlyUpdatesChangedFiles(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
-	config.SaveConfig(config.PathsFor(tmp), config.Default("testproj"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("testproj")); err != nil {
+		t.Fatal(err)
+	}
 
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Create a wiki page.
 	page := &types.Page{
@@ -88,13 +90,15 @@ func TestReconcileOnlyUpdatesChangedFiles(t *testing.T) {
 func TestReconcile_SkipsWhenWikiChangedSinceProjection(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
-	config.SaveConfig(config.PathsFor(tmp), config.Default("testproj"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("testproj")); err != nil {
+		t.Fatal(err)
+	}
 
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := &types.Page{
 		Frontmatter: types.DefaultFrontmatter(types.PageTypeProject),
@@ -137,13 +141,15 @@ func TestReconcile_SkipsWhenWikiChangedSinceProjection(t *testing.T) {
 func TestReconcile_ConflictFallsBackToMtimeMargin(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
-	config.SaveConfig(config.PathsFor(tmp), config.Default("testproj"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("testproj")); err != nil {
+		t.Fatal(err)
+	}
 
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := &types.Page{
 		Frontmatter: types.DefaultFrontmatter(types.PageTypeProject),
@@ -190,13 +196,15 @@ func TestReconcile_ConflictFallsBackToMtimeMargin(t *testing.T) {
 func TestReconcile_ConflictWithinMarginSkips(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
-	config.SaveConfig(config.PathsFor(tmp), config.Default("testproj"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("testproj")); err != nil {
+		t.Fatal(err)
+	}
 
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := &types.Page{
 		Frontmatter: types.DefaultFrontmatter(types.PageTypeProject),

@@ -18,7 +18,7 @@ func TestIndexAndSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := &types.Page{
 		Frontmatter: types.Frontmatter{
@@ -65,7 +65,7 @@ func TestIndexPage_IndexesRelations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := &types.Page{
 		Frontmatter: types.Frontmatter{
@@ -123,7 +123,7 @@ func TestIndexSource_CountsSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if err := store.IndexSource("abc123", "/tmp/whatever/abc123", "abc123", "2026-08-22T00:00:00Z"); err != nil {
 		t.Fatalf("IndexSource: %v", err)
@@ -158,7 +158,7 @@ func TestRemovePage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := &types.Page{
 		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeEntity},
@@ -191,7 +191,7 @@ func TestOpenEnablesWAL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	var mode string
 	if err := store.db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
@@ -223,13 +223,13 @@ func TestConcurrentAccessDoesNotLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open writer: %v", err)
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	reader, err := Open(paths)
 	if err != nil {
 		t.Fatalf("Open reader: %v", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 40)
@@ -274,7 +274,7 @@ func BenchmarkIndexPage(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Open: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := &types.Page{
 		Frontmatter: types.Frontmatter{Type: types.PageTypeEntity, Tags: []string{"auth", "api"}},
@@ -299,7 +299,7 @@ func BenchmarkSearch(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Open: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	for i := 0; i < 200; i++ {
 		page := &types.Page{

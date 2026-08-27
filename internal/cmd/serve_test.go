@@ -23,7 +23,7 @@ func TestServe_MCPMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stdin = r
-	w.Close()
+	_ = w.Close()
 	defer func() { os.Stdin = origStdin }()
 
 	if err := Serve(true); err != nil {

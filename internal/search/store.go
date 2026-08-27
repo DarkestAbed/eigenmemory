@@ -35,15 +35,15 @@ func Open(paths *config.Paths) (*Store, error) {
 	// parameter (that syntax belongs to mattn/go-sqlite3), so pragmas must be
 	// set explicitly after opening the connection.
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("set journal_mode: %w", err)
 	}
 	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("set busy_timeout: %w", err)
 	}
 	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("set synchronous: %w", err)
 	}
 
@@ -53,7 +53,7 @@ func Open(paths *config.Paths) (*Store, error) {
 	}
 
 	if _, err := db.Exec(schema); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("migrate database: %w", err)
 	}
 
@@ -140,7 +140,7 @@ func (s *Store) ListRelations() ([]types.Relation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list relations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []types.Relation
 	for rows.Next() {
@@ -242,7 +242,7 @@ func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var hits []struct {
 		rowid int64
@@ -298,7 +298,7 @@ func (s *Store) ListAllSlugs() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list slugs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []string
 	for rows.Next() {

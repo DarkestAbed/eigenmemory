@@ -13,7 +13,7 @@ func TestIngest_InlineText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	result, err := store.Ingest(IngestOptions{Source: "Some raw text.", Name: "note"})
 	if err != nil {
@@ -38,7 +38,7 @@ func TestIngest_DefaultName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	result, err := store.Ingest(IngestOptions{Source: "No name given."})
 	if err != nil {
@@ -55,7 +55,7 @@ func TestIngest_FilePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	srcPath := filepath.Join(tmp, "doc.txt")
 	if err := os.WriteFile(srcPath, []byte("Design doc contents."), 0o644); err != nil {
@@ -77,7 +77,7 @@ func TestIngest_FilePathMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if _, err := store.Ingest(IngestOptions{Source: filepath.Join(tmp, "missing.txt"), IsPath: true}); err == nil {
 		t.Fatal("expected error for a missing source file")
@@ -90,7 +90,7 @@ func TestIngest_Deduplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if _, err := store.Ingest(IngestOptions{Source: "same content", Name: "dup"}); err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestIngest_UnnamedSlugFallsBackToSourceID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// A name made entirely of characters Slugify strips produces an empty
 	// slug; Ingest must fall back to a source-id-derived slug instead of

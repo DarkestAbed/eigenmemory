@@ -23,7 +23,7 @@ func Status() error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	count, err := store.Search.CountPages()
 	if err != nil {

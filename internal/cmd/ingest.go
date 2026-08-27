@@ -15,7 +15,7 @@ func Ingest(opts IngestOptions) error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	result, err := store.Ingest(opts)
 	if err != nil {

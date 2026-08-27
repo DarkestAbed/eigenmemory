@@ -147,8 +147,8 @@ func TestSavePage_RejectsPathTraversalSlug(t *testing.T) {
 	paths := config.PathsFor(tmp)
 
 	const escapeTarget = "/tmp/eigenmemory_wiki_poc.md"
-	os.Remove(escapeTarget)
-	defer os.Remove(escapeTarget)
+	_ = os.Remove(escapeTarget)
+	defer func() { _ = os.Remove(escapeTarget) }()
 
 	page := &types.Page{
 		Frontmatter: types.DefaultFrontmatter(types.PageTypeEntity),

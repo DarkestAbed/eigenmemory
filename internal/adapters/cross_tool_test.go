@@ -18,12 +18,14 @@ func TestCrossToolConsistency(t *testing.T) {
 	// Keep Claude Code memory files inside the test temp dir.
 	t.Setenv("HOME", tmp)
 
-	config.SaveConfig(config.PathsFor(tmp), config.Default("crosstool"))
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("crosstool")); err != nil {
+		t.Fatal(err)
+	}
 	store, err := core.OpenAt(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// 1. Zed (via MCP wiki_remember equivalent) writes a project page.
 	page := &types.Page{

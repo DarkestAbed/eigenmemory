@@ -86,7 +86,7 @@ func SaveIndex(paths *config.Paths) error {
 	for _, entry := range entries {
 		if entry.Type != currentType {
 			currentType = entry.Type
-			sb.WriteString(fmt.Sprintf("\n## %s\n\n", strings.Title(string(currentType))))
+			sb.WriteString(fmt.Sprintf("\n## %s\n\n", capitalize(string(currentType))))
 		}
 		dir := wikiPageTypes[entry.Type]
 		tags := ""
@@ -97,6 +97,16 @@ func SaveIndex(paths *config.Paths) error {
 	}
 
 	return writeFileAtomic(paths.IndexFile, []byte(sb.String()))
+}
+
+// capitalize upper-cases the first rune of s. Page types are lowercase
+// ASCII slugs ("entity", "concept", ...), so a simple byte-level
+// uppercase is sufficient and avoids the deprecated strings.Title.
+func capitalize(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // parseIndexLine extracts a minimal IndexEntry from a markdown bullet.

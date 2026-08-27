@@ -59,7 +59,6 @@ func Run(paths *config.Paths, search *search.Store) (*Report, error) {
 
 	// Gather every page in the wiki.
 	allPages := make(map[string]*types.Page) // key = "type/slug"
-	var orderedKeys []string
 	for _, pageType := range types.ValidPageTypes() {
 		pages, err := wiki.ListPages(paths, pageType)
 		if err != nil {
@@ -68,7 +67,6 @@ func Run(paths *config.Paths, search *search.Store) (*Report, error) {
 		for _, p := range pages {
 			key := pageKey(pageType, p.Slug)
 			allPages[key] = p
-			orderedKeys = append(orderedKeys, key)
 			report.Checked++
 		}
 	}

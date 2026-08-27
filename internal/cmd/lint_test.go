@@ -63,7 +63,7 @@ func TestLintCmd_ReportsIssues(t *testing.T) {
 	if err := store.SavePage(page, types.PageTypeProject); err != nil {
 		t.Fatal(err)
 	}
-	store.Close()
+	_ = store.Close()
 
 	out, err := captureStdout(t, func() error { return Lint(LintOptions{}) })
 	if err != nil {
@@ -97,7 +97,7 @@ func TestLintCmd_FixResolvesDrift(t *testing.T) {
 	if err := store.Search.RemovePage(page.Frontmatter.ID); err != nil {
 		t.Fatal(err)
 	}
-	store.Close()
+	_ = store.Close()
 
 	out, err := captureStdout(t, func() error { return Lint(LintOptions{Fix: true}) })
 	if err != nil {

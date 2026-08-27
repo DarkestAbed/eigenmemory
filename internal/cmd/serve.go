@@ -18,7 +18,7 @@ func Serve(mcpMode bool) error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Log startup to stderr so it does not interfere with stdio JSON-RPC.
 	fmt.Fprintf(os.Stderr, "eigenmemory mcp server starting (root=%s)\n", store.Paths.Root)

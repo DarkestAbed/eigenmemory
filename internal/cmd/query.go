@@ -37,7 +37,7 @@ func Query(opts QueryOptions) error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if opts.Limit <= 0 {
 		opts.Limit = 5

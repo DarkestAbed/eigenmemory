@@ -15,7 +15,7 @@ func Reindex() error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if err := store.RebuildIndex(); err != nil {
 		return fmt.Errorf("rebuild index: %w", err)

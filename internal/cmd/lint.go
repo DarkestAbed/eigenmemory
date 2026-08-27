@@ -29,7 +29,7 @@ func Lint(opts LintOptions) error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	report, err := lint.Run(paths, store.Search)
 	if err != nil {

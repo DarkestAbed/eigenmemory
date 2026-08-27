@@ -21,7 +21,7 @@ func Reconcile(opts ReconcileOptions) error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	cfg, err := config.LoadConfig(store.Paths)
 	if err != nil {

@@ -15,7 +15,7 @@ func TestSavePageAndSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenAt: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := &types.Page{
 		Frontmatter: types.DefaultFrontmatter(types.PageTypeEntity),
@@ -45,7 +45,7 @@ func TestOpen_UsesScopeFromCWD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chdir(orig) })
+	t.Cleanup(func() { _ = os.Chdir(orig) })
 	if err := os.Chdir(tmp); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestOpen_UsesScopeFromCWD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if _, err := os.Stat(store.Paths.Root); err != nil {
 		t.Errorf("expected store root to exist: %v", err)
@@ -70,7 +70,7 @@ func TestOpen_ScopeResolutionFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chdir(orig) })
+	t.Cleanup(func() { _ = os.Chdir(orig) })
 	if err := os.Chdir(tmp); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestLoadPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	page := &types.Page{
 		Frontmatter: types.DefaultFrontmatter(types.PageTypeEntity),
@@ -113,7 +113,7 @@ func TestSaveIndexAndAppendLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if err := store.SaveIndex(); err != nil {
 		t.Fatalf("SaveIndex: %v", err)
@@ -147,7 +147,7 @@ func TestRebuildIndex_IncludesSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenAt: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if _, err := store.Ingest(IngestOptions{Source: "some text", Name: "src"}); err != nil {
 		t.Fatal(err)
@@ -181,7 +181,7 @@ func TestRebuildIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenAt: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if err := store.SavePage(page, types.PageTypeConcept); err != nil {
 		t.Fatalf("SavePage: %v", err)

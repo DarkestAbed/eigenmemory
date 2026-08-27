@@ -19,7 +19,7 @@ func TestLintHealthyWiki(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Index links to the only project page.
 	if err := wiki.SaveIndex(store.Paths); err != nil {
@@ -58,7 +58,7 @@ func TestLintDetectsOrphan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if err := wiki.SaveIndex(store.Paths); err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestLintDetectsBrokenLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if err := wiki.SaveIndex(store.Paths); err != nil {
 		t.Fatal(err)
@@ -136,7 +136,7 @@ func TestLintDetectsIndexDrift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Write a markdown page directly, bypassing the indexer.
 	p := &types.Page{
@@ -177,7 +177,7 @@ func TestLintIgnoresLogAndIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// index.md and log.md are never orphans; even with empty bodies they pass.
 	if err := wiki.SaveIndex(store.Paths); err != nil {
@@ -213,7 +213,7 @@ func TestLintResolvesDriftWithFix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	p := &types.Page{
 		Frontmatter: types.DefaultFrontmatter(types.PageTypeProject),
@@ -261,7 +261,7 @@ func TestLintDetectsBrokenRelation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	if err := wiki.SaveIndex(store.Paths); err != nil {
 		t.Fatal(err)

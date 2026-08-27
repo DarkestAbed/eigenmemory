@@ -69,7 +69,7 @@ func TestQuery_WithResults(t *testing.T) {
 	if err := store.SavePage(page, types.PageTypeEntity); err != nil {
 		t.Fatal(err)
 	}
-	store.Close()
+	_ = store.Close()
 
 	out, err := captureStdout(t, func() error { return Query(QueryOptions{Query: "login", Limit: 0}) })
 	if err != nil {

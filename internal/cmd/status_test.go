@@ -59,7 +59,7 @@ func TestStatus_NoProjectNameSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.Close()
+	_ = store.Close()
 
 	out, err := captureStdout(t, func() error { return Status() })
 	if err != nil {

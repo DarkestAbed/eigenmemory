@@ -73,7 +73,7 @@ func ProjectMemoryProjection(paths *config.Paths, projectName string) error {
 	sb.WriteString("This directory is auto-generated from `.eigenmemory/wiki/`. Do not hand-edit; run `eigenmemory reconcile` to sync changes back.\n\n")
 	sb.WriteString("## Memory files\n\n")
 	for _, f := range memoryFiles {
-		sb.WriteString(fmt.Sprintf("- [%s](%s)\n", f, f))
+		fmt.Fprintf(&sb, "- [%s](%s)\n", f, f)
 	}
 
 	if err := writeFileAtomic(filepath.Join(memDir, "MEMORY.md"), []byte(sb.String())); err != nil {
@@ -104,21 +104,21 @@ func renderMemoryPage(page *types.Page, pageType types.PageType) string {
 
 	var sb strings.Builder
 	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("eigenmemory_id: %s\n", page.Frontmatter.ID))
-	sb.WriteString(fmt.Sprintf("eigenmemory_type: %s\n", pageType))
-	sb.WriteString(fmt.Sprintf("eigenmemory_slug: %s\n", page.Slug))
-	sb.WriteString(fmt.Sprintf("eigenmemory_updated: %s\n", page.Frontmatter.Updated.Format("2006-01-02T15:04:05Z")))
-	sb.WriteString(fmt.Sprintf("eigenmemory_hash: %s\n", contentHash(cleanBody)))
+	fmt.Fprintf(&sb, "eigenmemory_id: %s\n", page.Frontmatter.ID)
+	fmt.Fprintf(&sb, "eigenmemory_type: %s\n", pageType)
+	fmt.Fprintf(&sb, "eigenmemory_slug: %s\n", page.Slug)
+	fmt.Fprintf(&sb, "eigenmemory_updated: %s\n", page.Frontmatter.Updated.Format("2006-01-02T15:04:05Z"))
+	fmt.Fprintf(&sb, "eigenmemory_hash: %s\n", contentHash(cleanBody))
 	if len(page.Frontmatter.Tags) > 0 {
-		sb.WriteString(fmt.Sprintf("tags: [%s]\n", strings.Join(page.Frontmatter.Tags, ", ")))
+		fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(page.Frontmatter.Tags, ", "))
 	}
 	if len(page.Frontmatter.Sources) > 0 {
-		sb.WriteString(fmt.Sprintf("sources: [%s]\n", strings.Join(page.Frontmatter.Sources, ", ")))
+		fmt.Fprintf(&sb, "sources: [%s]\n", strings.Join(page.Frontmatter.Sources, ", "))
 	}
 	sb.WriteString("---\n\n")
 	sb.WriteString(cleanBody)
 	sb.WriteString("\n\n")
-	sb.WriteString(fmt.Sprintf("_Projected from `.eigenmemory/wiki/%s/%s.md` via EigenMemory._\n", wikiDir(pageType), page.Slug))
+	fmt.Fprintf(&sb, "_Projected from `.eigenmemory/wiki/%s/%s.md` via EigenMemory._\n", wikiDir(pageType), page.Slug)
 	return sb.String()
 }
 

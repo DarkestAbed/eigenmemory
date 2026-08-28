@@ -6,6 +6,11 @@ before:
   hooks:
     - go mod tidy
     - go test ./...
+    # Diagnostic: print the working-tree state right before the build (after
+    # the hooks above) so a "+dirty" in the release can be root-caused from the
+    # CI logs. These are no-ops on a clean tree.
+    - git status --porcelain
+    - git diff --stat
 
 builds:
   - env:
@@ -19,6 +24,11 @@ builds:
       - arm64
     main: ./cmd/eigenmemory
     binary: eigenmemory
+    # Inject the release tag as the version reported by the MCP handshake so it
+    # is clean (no "+dirty") regardless of VCS dirty state. The Go source falls
+    # back to debug.ReadBuildInfo() when this is unset (local builds, tests).
+    ldflags:
+      - -X github.com/DarkestAbed/eigenmemory/internal/mcp.version={{.Tag}}
 
 archives:
   - format: tar.gz

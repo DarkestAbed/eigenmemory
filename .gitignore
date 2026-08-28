@@ -13,6 +13,9 @@ coverage/
 # Go
 vendor/
 
+# goreleaser build output
+dist/
+
 # IDE
 .idea/
 .vscode/

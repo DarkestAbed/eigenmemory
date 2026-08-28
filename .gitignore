@@ -26,3 +26,6 @@ vendor/
 
 # Global EigenMemory runtime artifacts (for local testing)
 ~/.eigenmemory/
+
+# Local review/assessment notes (date-prefixed, kept locally; not part of the project)
+/20??????-*.md

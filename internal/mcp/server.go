@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime/debug"
 
 	"github.com/DarkestAbed/eigenmemory/internal/config"
 	"github.com/DarkestAbed/eigenmemory/internal/core"
@@ -137,6 +138,35 @@ func negotiateProtocolVersion(requested string) string {
 	return supportedProtocolVersions[0]
 }
 
+// serverVersion reports the build version for the MCP initialize handshake.
+// Release builds (goreleaser builds from the tagged checkout, where Go
+// resolves the module version from the VCS tag) set bi.Main.Version to the
+// release tag (e.g. "v0.1.3"); a local `go build` away from a tag leaves it
+// "(devel)", so fall back to the short VCS revision, then "dev". Wiring this
+// keeps clients from showing a stale hardcoded version no matter what ships.
+func serverVersion() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+	return resolveVersion(bi)
+}
+
+// resolveVersion extracts the reported version from a build.Info. It is split
+// from serverVersion so the resolution logic can be unit-tested with synthetic
+// build info (debug.ReadBuildInfo cannot be mocked).
+func resolveVersion(bi *debug.BuildInfo) string {
+	if v := bi.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
+			return s.Value[:7]
+		}
+	}
+	return "dev"
+}
+
 func (s *Server) handleInitialize(req Request) error {
 	var params InitializeParams
 	if len(req.Params) > 0 {
@@ -153,7 +183,7 @@ func (s *Server) handleInitialize(req Request) error {
 		},
 		ServerInfo: ServerInfo{
 			Name:    "eigenmemory",
-			Version: "0.1.0",
+			Version: serverVersion(),
 		},
 	}
 

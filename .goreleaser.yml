@@ -6,11 +6,6 @@ before:
   hooks:
     - go mod tidy
     - go test ./...
-    # Diagnostic: print the working-tree state right before the build (after
-    # the hooks above) so a "+dirty" in the release can be root-caused from the
-    # CI logs. These are no-ops on a clean tree.
-    - git status --porcelain
-    - git diff --stat
 
 builds:
   - env:

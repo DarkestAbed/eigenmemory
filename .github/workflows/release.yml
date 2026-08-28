@@ -18,12 +18,6 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Debug working tree (post-checkout)
-        run: |
-          echo "=== git status --porcelain ==="
-          git status --porcelain || true
-          echo "=== git diff --stat ==="
-          git diff --stat || true
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:

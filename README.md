@@ -5,15 +5,8 @@
 ### A persistent, cross-tool LLM memory layer for coding harnesses
 
 [![CI](https://img.shields.io/github/actions/workflow/status/DarkestAbed/eigenmemory/ci.yml?branch=main&label=CI)](https://github.com/DarkestAbed/eigenmemory/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/DarkestAbed/eigenmemory/release.yml?branch=main&label=release)](https://github.com/DarkestAbed/eigenmemory/actions/workflows/release.yml)
 [![Release version](https://img.shields.io/github/v/release/DarkestAbed/eigenmemory)](https://github.com/DarkestAbed/eigenmemory/releases)
 ![Release date](https://img.shields.io/github/release-date/DarkestAbed/eigenmemory)
-
-![Commits per month](https://img.shields.io/github/commit-activity/m/DarkestAbed/eigenmemory)
-![Last commit](https://img.shields.io/github/last-commit/DarkestAbed/eigenmemory)
-![Contributors](https://img.shields.io/github/contributors/DarkestAbed/eigenmemory)
-![Closed issues](https://img.shields.io/github/issues-closed/DarkestAbed/eigenmemory)
-![Closed PRs](https://img.shields.io/github/issues-pr-closed/DarkestAbed/eigenmemory)
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE.md)
 [![GitHub stars](https://img.shields.io/github/stars/DarkestAbed/eigenmemory?style=social)](https://github.com/DarkestAbed/eigenmemory/stargazers)
@@ -53,9 +46,9 @@ Query: "how do we rotate refresh tokens?"
 </pre>
 </div>
 
-EigenMemory keeps a single markdown-based **LLM Wiki** as the canonical memory store and exposes it to Claude Code, Zed, and any MCP-speaking tool through a local stdio server. Tool-native memory files (Claude Code's `/memory`, Zed's agent memory) are treated as **projections** of the wiki, not independent sources of truth — so every tool you use reads from and writes to the same knowledge base.
+EigenMemory keeps a single markdown-based **LLM Wiki** as the canonical memory store, following [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). EigenMemory then builds the wiki and then exposes it to Claude Code, Zed, and any MCP-speaking tool through a local stdio server. Tool-native memory files (Claude Code's `/memory`, Zed's agent memory - ***more to come***) are treated as **projections** of the wiki, not independent sources of truth — so every tool you use reads from and writes to the same knowledge base.
 
-Use it when you want an agent to remember decisions across sessions, recall why a system was built a certain way, or stop re-asking questions you already answered last week. It runs locally, stores everything in plain markdown you can read and edit, and indexes it into SQLite FTS5 for fast keyword and graph search.
+Use it when you want an agent to remember decisions across sessions, recall why a system was built a certain way, or stop re-asking questions you already answered last week. It runs locally, stores everything in plain markdown you can read and edit, and indexes it into SQLite FTS5 for fast keyword and graph-like search.
 
 ## Quick start
 
@@ -219,34 +212,6 @@ Bug reports, feature ideas, and code contributions are all welcome.
 - [Open an issue](https://github.com/DarkestAbed/eigenmemory/issues) for a bug or concrete request.
 - Read [`CLAUDE.md`](./CLAUDE.md) for the agent-maintained wiki conventions before working on the store.
 - Run `make test` and `eigenmemory lint` before sending a pull request.
-
-<details>
-<summary>More output</summary>
-
-### Status
-
-<pre>
-$ eigenmemory status
-Scope:        project
-Root:         /path/to/.eigenmemory
-Project:      your-project
-Indexed pages: 47
-Relations:     132
-Sources:       18
-</pre>
-
-### Lint
-
-<pre>
-$ eigenmemory lint
-Scope: project
-Root:  /path/to/.eigenmemory
-Checked 47 pages
-Issues: 0 error(s), 0 warning(s), 0 info
-Wiki is healthy.
-</pre>
-
-</details>
 
 ## Support
 

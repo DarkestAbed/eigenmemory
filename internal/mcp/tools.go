@@ -208,10 +208,17 @@ func handleWikiRecall(ctx context.Context, s *Server, args json.RawMessage) (any
 			summary = summary[:200] + "..."
 		}
 		marker := ""
-		if r.MatchSource == "graph" {
+		var extra string
+		switch r.MatchSource {
+		case "graph":
 			marker = " (graph)"
+		case "source":
+			marker = " (source)"
+			if r.SourceID != "" {
+				extra = fmt.Sprintf("\n   Full source: .eigenmemory/sources/%s", r.SourceID)
+			}
 		}
-		lines = append(lines, fmt.Sprintf("%d. %s (%s/%s%s)\n   %s", i+1, r.Title, r.Type, r.Slug, marker, summary))
+		lines = append(lines, fmt.Sprintf("%d. %s (%s/%s%s)\n   %s%s", i+1, r.Title, r.Type, r.Slug, marker, summary, extra))
 	}
 
 	if len(lines) == 0 {
@@ -479,10 +486,17 @@ func handleWikiQuery(ctx context.Context, s *Server, args json.RawMessage) (any,
 			body = body[:400] + "..."
 		}
 		marker := ""
-		if r.MatchSource == "graph" {
+		var extra string
+		switch r.MatchSource {
+		case "graph":
 			marker = " (graph)"
+		case "source":
+			marker = " (source)"
+			if r.SourceID != "" {
+				extra = fmt.Sprintf("\nFull source: .eigenmemory/sources/%s\n", r.SourceID)
+			}
 		}
-		lines = append(lines, fmt.Sprintf("%d. %s (%s/%s%s)\n%s\n", i+1, r.Title, r.Type, r.Slug, marker, body))
+		lines = append(lines, fmt.Sprintf("%d. %s (%s/%s%s)\n%s%s\n", i+1, r.Title, r.Type, r.Slug, marker, body, extra))
 	}
 	lines = append(lines, "Answer the question using the context above and cite the relevant page(s).")
 

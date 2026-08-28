@@ -30,6 +30,40 @@ CREATE TABLE IF NOT EXISTS relations (
 	PRIMARY KEY (from_id, to_id, relation_type)
 );
 
+-- source_docs holds the full content of each ingested source for full-text
+-- search. The canonical immutable copy stays on disk at sources/<id>; this
+-- table is a derived, rebuildable index (the DB is gitignored). Mirrors the
+-- pages/pages_fts external-content pattern so upserts are trigger-synced.
+CREATE TABLE IF NOT EXISTS source_docs (
+	id       TEXT PRIMARY KEY,
+	name     TEXT,
+	content  TEXT
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS sources_fts USING fts5(
+	name,
+	content,
+	content='source_docs',
+	content_rowid='rowid'
+);
+
+CREATE TRIGGER IF NOT EXISTS sources_fts_ai AFTER INSERT ON source_docs BEGIN
+	INSERT INTO sources_fts(rowid, name, content)
+	VALUES (new.rowid, new.name, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS sources_fts_ad AFTER DELETE ON source_docs BEGIN
+	INSERT INTO sources_fts(sources_fts, rowid, name, content)
+	VALUES ('delete', old.rowid, old.name, old.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS sources_fts_au AFTER UPDATE ON source_docs BEGIN
+	INSERT INTO sources_fts(sources_fts, rowid, name, content)
+	VALUES ('delete', old.rowid, old.name, old.content);
+	INSERT INTO sources_fts(rowid, name, content)
+	VALUES (new.rowid, new.name, new.content);
+END;
+
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
 	title,
 	body,

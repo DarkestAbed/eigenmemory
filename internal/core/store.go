@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/DarkestAbed/eigenmemory/internal/config"
@@ -141,7 +142,18 @@ func (s *Store) RebuildIndex() error {
 		return err
 	}
 	for _, src := range sources {
-		if err := s.Search.IndexSource(src.ID, src.Path, src.SHA256, src.StoredAt.Format(time.RFC3339)); err != nil {
+		// The source name is not stored on disk; recover it from the summary
+		// page that references it (pages were indexed above, so the pages table
+		// is populated). Index the full source content for full-text search.
+		name, err := s.Search.SourceDisplayName(src.ID)
+		if err != nil {
+			return fmt.Errorf("lookup source name %s: %w", src.ID[:12], err)
+		}
+		content, err := os.ReadFile(src.Path)
+		if err != nil {
+			return fmt.Errorf("read source %s: %w", src.ID[:12], err)
+		}
+		if err := s.Search.IndexSource(src.ID, src.Path, src.SHA256, src.StoredAt.Format(time.RFC3339), name, content); err != nil {
 			return err
 		}
 	}

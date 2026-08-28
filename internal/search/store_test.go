@@ -125,7 +125,7 @@ func TestIndexSource_CountsSources(t *testing.T) {
 	}
 	defer func() { _ = store.Close() }()
 
-	if err := store.IndexSource("abc123", "/tmp/whatever/abc123", "abc123", "2026-08-22T00:00:00Z"); err != nil {
+	if err := store.IndexSource("abc123", "/tmp/whatever/abc123", "abc123", "2026-08-22T00:00:00Z", "design doc", []byte("some source content")); err != nil {
 		t.Fatalf("IndexSource: %v", err)
 	}
 
@@ -138,7 +138,7 @@ func TestIndexSource_CountsSources(t *testing.T) {
 	}
 
 	// Re-indexing the same id must upsert, not duplicate.
-	if err := store.IndexSource("abc123", "/tmp/whatever/abc123", "abc123", "2026-08-23T00:00:00Z"); err != nil {
+	if err := store.IndexSource("abc123", "/tmp/whatever/abc123", "abc123", "2026-08-23T00:00:00Z", "design doc", []byte("updated content")); err != nil {
 		t.Fatalf("re-IndexSource: %v", err)
 	}
 	count, err = store.CountSources()
@@ -462,5 +462,141 @@ func TestSearchWithGraph_ExpandsNeighbors(t *testing.T) {
 		if r.Slug == "token-vault" && r.MatchSource == "fts" {
 			t.Errorf("token-vault appeared as an FTS hit, should only be graph")
 		}
+	}
+}
+
+func TestSearch_ORFallbackRescuesNLQuery(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Page contains "login" and "token" but NOT "kubernetes", "access",
+	// "services", "setup". A strict-AND of all those NL tokens must miss.
+	page := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeEntity},
+		Slug:        "auth-service",
+		Body:        "# Auth Service\n\nHandles login and token refresh.",
+		Path:        tmp + "/wiki/entity/auth-service.md",
+	}
+	if err := store.IndexPage(page); err != nil {
+		t.Fatalf("IndexPage: %v", err)
+	}
+
+	// Strict AND (via Search) must find nothing for the over-constrained query.
+	hits, err := store.Search("how is the auth service set up for access and services", 5)
+	if err != nil {
+		t.Fatalf("Search AND: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("strict-AND returned %d hits, want 0 (over-constrained)", len(hits))
+	}
+
+	// OR fallback via searchPagesWithFallback must rescue the page.
+	rescued, err := store.searchPagesWithFallback("how is the auth service set up for access and services", 5)
+	if err != nil {
+		t.Fatalf("searchPagesWithFallback: %v", err)
+	}
+	if len(rescued) == 0 {
+		t.Errorf("OR fallback returned 0 hits, want the auth-service page rescued")
+	}
+}
+
+func TestStripStopwords_AllStopwords(t *testing.T) {
+	// An all-stopword query must fall back to the original tokens (no empty
+	// MATCH) rather than returning an empty slice.
+	got := stripStopwords([]string{"how", "is", "the", "and"})
+	if len(got) == 0 {
+		t.Errorf("stripStopwords of all-stopword query returned empty; want original tokens")
+	}
+}
+
+func TestIndexSource_FullContentSearchable(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// A source whose distinctive content sits well past the 2KB summary
+	// truncation cutoff. The summary page body only carries the prefix.
+	long := strings.Repeat("placeholder preamble line.\n", 200) // ~4.6KB
+	long += "kind-based deployment section with the distinctive token xyzzy-quirk.\n"
+	content := []byte("# Local K8s Cluster\n\n" + long)
+
+	if err := store.IndexSource("deadbeef", tmp+"/sources/deadbeef", "deadbeef", "2026-08-26T00:00:00Z", "local-k8s-cluster-setup", content); err != nil {
+		t.Fatalf("IndexSource: %v", err)
+	}
+
+	// Query the distinctive term that only appears past the 2KB cutoff.
+	hits, err := store.searchSources("xyzzy-quirk", 5)
+	if err != nil {
+		t.Fatalf("searchSources: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("searchSources = %d hits, want 1 (full content must be searchable past 2KB)", len(hits))
+	}
+	h := hits[0]
+	if h.MatchSource != "source" {
+		t.Errorf("MatchSource = %q, want source", h.MatchSource)
+	}
+	if h.SourceID != "deadbeef" {
+		t.Errorf("SourceID = %q, want deadbeef", h.SourceID)
+	}
+	if !strings.Contains(h.Body, "xyzzy-quirk") {
+		t.Errorf("snippet missing the matched term; got %q", h.Body)
+	}
+	if h.Title != "local-k8s-cluster-setup" {
+		t.Errorf("Title = %q, want local-k8s-cluster-setup", h.Title)
+	}
+}
+
+func TestSourceDisplayName_FromSummaryPage(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// A summary page whose sources frontmatter references the source id.
+	summary := &types.Page{
+		Frontmatter: types.Frontmatter{
+			ID:      types.NewID(),
+			Type:    types.PageTypeSummary,
+			Sources: []string{"feedface"},
+		},
+		Slug: "design-doc",
+		Body:  "# Summary: design doc\n\npreamble.\n",
+		Path:  tmp + "/wiki/summary/design-doc.md",
+	}
+	if err := store.IndexPage(summary); err != nil {
+		t.Fatalf("IndexPage summary: %v", err)
+	}
+
+	name, err := store.SourceDisplayName("feedface")
+	if err != nil {
+		t.Fatalf("SourceDisplayName: %v", err)
+	}
+	if name != "Summary: design doc" {
+		t.Errorf("SourceDisplayName = %q, want %q", name, "Summary: design doc")
+	}
+
+	// Unknown source id returns empty, no error.
+	unknown, err := store.SourceDisplayName("nope")
+	if err != nil {
+		t.Fatalf("SourceDisplayName unknown: %v", err)
+	}
+	if unknown != "" {
+		t.Errorf("SourceDisplayName unknown = %q, want empty", unknown)
 	}
 }

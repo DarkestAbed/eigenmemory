@@ -440,6 +440,11 @@ func (s *Store) searchPagesWithFallback(query string, limit int) ([]SearchResult
 	return s.searchPagesMatch(buildMatch(tokens, " OR "), limit)
 }
 
+// legacyMdSuffix mirrors wiki.LegacyMdSuffix: the slug segment pre-fix ingests
+// carried because Slugify mapped ".md" to a segment ("target.md" -> "target-md").
+// Duplicated here to keep the search package free of a wiki dependency.
+const legacyMdSuffix = "-md"
+
 // Neighbors returns up to limit pages reachable in one hop from the given
 // slugs via the relations table (either direction). Pages already in the
 // seed set are excluded. Results are marked MatchSource="graph".
@@ -447,20 +452,36 @@ func (s *Store) Neighbors(seeds []string, limit int) ([]SearchResult, error) {
 	if len(seeds) == 0 || limit <= 0 {
 		return nil, nil
 	}
-	// Build placeholders for the IN clause.
+	// Build placeholders for the IN clause, plus the "bare" form of each seed
+	// (with a trailing "-md" stripped) for the legacy reverse-lookup arm.
 	placeholders := make([]string, len(seeds))
+	barePlaceholders := make([]string, len(seeds))
 	args := make([]any, 0, len(seeds))
+	bareArgs := make([]any, 0, len(seeds))
 	seedSet := make(map[string]bool, len(seeds))
 	for i, slug := range seeds {
 		placeholders[i] = "?"
+		barePlaceholders[i] = "?"
 		args = append(args, slug)
+		bareArgs = append(bareArgs, strings.TrimSuffix(slug, legacyMdSuffix))
 		seedSet[strings.ToLower(slug)] = true
 	}
 	inClause := strings.Join(placeholders, ",")
+	bareInClause := strings.Join(barePlaceholders, ",")
 
 	// Neighbor slugs reachable in either direction. Use UNION to dedup the
-	// slug column before fetching page rows.
-	neighborArgs := append(append([]any{}, args...), args...)
+	// slug column before fetching page rows. Two arms are legacy fallbacks for
+	// pre-fix "target-md" summary pages:
+	//   - arm 3 (forward): from_id is a real slug, but to_id is a bare slug
+	//     ("target") that must reach a "target-md" page.
+	//   - arm 4 (reverse): when the seed itself is a legacy "target-md" page,
+	//     carriers stored their edge with to_id = "target" (the bare form), so
+	//     the reverse lookup must match to_id against the bare seed.
+	neighborArgs := make([]any, 0, len(args)*3+len(bareArgs))
+	neighborArgs = append(neighborArgs, args...)      // arm 1
+	neighborArgs = append(neighborArgs, args...)      // arm 2
+	neighborArgs = append(neighborArgs, args...)      // arm 3
+	neighborArgs = append(neighborArgs, bareArgs...)  // arm 4
 	query := fmt.Sprintf(`
 		SELECT DISTINCT p.id, p.slug, p.type, p.title, p.body, p.tags, p.updated_at
 		FROM pages p
@@ -468,8 +489,12 @@ func (s *Store) Neighbors(seeds []string, limit int) ([]SearchResult, error) {
 			SELECT to_id FROM relations WHERE from_id IN (%[1]s)
 			UNION
 			SELECT from_id FROM relations WHERE to_id IN (%[1]s)
+			UNION
+			SELECT to_id || '-md' FROM relations WHERE from_id IN (%[1]s)
+			UNION
+			SELECT from_id FROM relations WHERE to_id IN (%[2]s)
 		)
-	`, inClause)
+	`, inClause, bareInClause)
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit*4)
 	}

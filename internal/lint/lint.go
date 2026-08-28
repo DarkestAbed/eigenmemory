@@ -118,12 +118,23 @@ func Run(paths *config.Paths, search *search.Store) (*Report, error) {
 		}
 	}
 	for key := range allPages {
-		_, slug := splitPageKey(key)
+		pt, slug := splitPageKey(key)
 		lowerSlug := strings.ToLower(slug)
 		if lowerSlug == "index" || lowerSlug == "log" {
 			continue
 		}
-		if !linked[lowerSlug] && !referencedBy[lowerSlug] {
+		// Legacy fallback: a "target-md" summary page (pre-fix ingest slug) is
+		// also considered referenced if anything links its bare form "target".
+		// Restricted to summary pages because the "-md" segment only ever came
+		// from ingest; a non-summary page named "foo-md" (e.g. title "Foo MD")
+		// is intentional, not a legacy artifact, and [[foo]] must not resolve to
+		// it.
+		bareSlug := lowerSlug
+		if pt == types.PageTypeSummary {
+			bareSlug = wiki.StripLegacyMdSuffix(lowerSlug)
+		}
+		if !linked[lowerSlug] && !referencedBy[lowerSlug] &&
+			!linked[bareSlug] && !referencedBy[bareSlug] {
 			report.Issues = append(report.Issues, Issue{
 				Severity: SeverityWarning,
 				Category: CategoryOrphan,
@@ -210,10 +221,20 @@ func linkSlug(link string) string {
 }
 
 // pageExists reports whether a link target matches any existing page slug.
+// As a legacy fallback, a bare link "target" also matches a summary page slug
+// "target-md" (the pre-fix ingest slug form), so [[target]] resolves to a
+// summary page ingested before the slug-extension fix. The fallback is
+// restricted to summary pages: the "-md" segment only ever came from ingest, so
+// a non-summary page named "foo-md" is intentional and [[foo]] must not
+// resolve to it.
 func pageExists(all map[string]*types.Page, link string) bool {
 	for key := range all {
-		_, slug := splitPageKey(key)
-		if strings.ToLower(slug) == link {
+		pt, slug := splitPageKey(key)
+		lower := strings.ToLower(slug)
+		if lower == link {
+			return true
+		}
+		if pt == types.PageTypeSummary && lower == link+wiki.LegacyMdSuffix {
 			return true
 		}
 	}

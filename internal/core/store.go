@@ -72,16 +72,10 @@ func (s *Store) SavePage(page *types.Page, pageType types.PageType) error {
 	return nil
 }
 
-// indexBodyLinks extracts internal links from a page's body and records them
-// as untyped links_to graph edges. Body links are derived, not authored, so
-// they live only in the search index — the page's frontmatter is never
-// mutated. Must run after IndexPage, which clears the slug's relations before
-// reinserting frontmatter relations.
-func (s *Store) indexBodyLinks(page *types.Page) error {
-	raw := wiki.ExtractLinks(page.Body)
-	if len(raw) == 0 {
-		return nil
-	}
+// linkSlugs normalizes a set of extracted link targets to deduplicated bare
+// slugs via wiki.LinkToSlug, dropping empties. Shared by body-link and
+// source-link indexing so both resolve targets the same way.
+func linkSlugs(raw []string) []string {
 	seen := make(map[string]struct{}, len(raw))
 	var slugs []string
 	for _, l := range raw {
@@ -95,6 +89,44 @@ func (s *Store) indexBodyLinks(page *types.Page) error {
 		seen[slug] = struct{}{}
 		slugs = append(slugs, slug)
 	}
+	return slugs
+}
+
+// indexBodyLinks extracts internal links from a page's body and records them
+// as untyped links_to graph edges. Body links are derived, not authored, so
+// they live only in the search index — the page's frontmatter is never
+// mutated. Must run after IndexPage, which clears the slug's relations before
+// reinserting frontmatter relations.
+func (s *Store) indexBodyLinks(page *types.Page) error {
+	slugs := linkSlugs(wiki.ExtractLinks(page.Body))
+	if len(slugs) == 0 {
+		return nil
+	}
+	return s.Search.IndexBodyLinks(page.Slug, slugs)
+}
+
+// indexSourceLinks extracts internal links from the full raw content of every
+// source referenced by a summary page and records them as links_to/body edges.
+// Unlike indexBodyLinks (which scans the ~2KB truncated summary body), this
+// reads the entire source file, so extraction is deterministic and independent
+// of fence parity or truncation. A [[wikilink]] authored in a source's prose is
+// a graph edge; one inside the source's own fenced code block is not
+// (wiki.ExtractLinks ignores code). Must run after SavePage/IndexPage, which
+// clear the slug's relations before reinserting frontmatter relations. Missing
+// source files (e.g. removed out of band) are skipped, not fatal.
+func (s *Store) indexSourceLinks(page *types.Page) error {
+	if len(page.Frontmatter.Sources) == 0 {
+		return nil
+	}
+	var allRaw []string
+	for _, id := range page.Frontmatter.Sources {
+		content, err := wiki.LoadSource(s.Paths, id)
+		if err != nil {
+			continue
+		}
+		allRaw = append(allRaw, wiki.ExtractLinks(string(content))...)
+	}
+	slugs := linkSlugs(allRaw)
 	if len(slugs) == 0 {
 		return nil
 	}
@@ -132,6 +164,9 @@ func (s *Store) RebuildIndex() error {
 				return err
 			}
 			if err := s.indexBodyLinks(page); err != nil {
+				return err
+			}
+			if err := s.indexSourceLinks(page); err != nil {
 				return err
 			}
 		}

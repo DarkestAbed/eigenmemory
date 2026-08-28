@@ -149,6 +149,13 @@ func serverVersion() string {
 	if !ok {
 		return "dev"
 	}
+	return resolveVersion(bi)
+}
+
+// resolveVersion extracts the reported version from a build.Info. It is split
+// from serverVersion so the resolution logic can be unit-tested with synthetic
+// build info (debug.ReadBuildInfo cannot be mocked).
+func resolveVersion(bi *debug.BuildInfo) string {
 	if v := bi.Main.Version; v != "" && v != "(devel)" {
 		return v
 	}

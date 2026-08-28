@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -65,14 +66,60 @@ func TestInitialize(t *testing.T) {
 	if result.ServerInfo.Name != "eigenmemory" {
 		t.Errorf("server name = %q, want eigenmemory", result.ServerInfo.Name)
 	}
-	// Version must be wired to the build, not a stale hardcoded "0.1.0".
-	// A local `go test` build yields "(devel)" → serverVersion falls back to the
-	// short VCS revision, so any non-empty, non-"0.1.0" value passes.
-	if result.ServerInfo.Version == "" {
-		t.Errorf("server version is empty; want build-derived version")
-	}
+	// Version must be wired to the build, not the stale hardcoded "0.1.0".
+	// resolveVersion is unit-tested directly below for the actual resolution
+	// paths; here we just assert the handshake no longer emits the old literal.
 	if result.ServerInfo.Version == "0.1.0" {
 		t.Errorf("server version = %q (stale hardcoded literal); want build-derived version", result.ServerInfo.Version)
+	}
+}
+
+// TestResolveVersion covers the version-resolution logic with synthetic build
+// info, including the release path (Main.Version = tag) that the live
+// handshake cannot exercise from a `go test` build (which reports "(devel)").
+func TestResolveVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		bi   *debug.BuildInfo
+		want string
+	}{
+		{
+			name: "release tag from module version",
+			bi:   &debug.BuildInfo{Main: debug.Module{Version: "v0.1.3"}},
+			want: "v0.1.3",
+		},
+		{
+			name: "dirty release tag still reported",
+			bi:   &debug.BuildInfo{Main: debug.Module{Version: "v0.1.3+dirty"}},
+			want: "v0.1.3+dirty",
+		},
+		{
+			name: "local devel build falls back to short vcs revision",
+			bi: &debug.BuildInfo{
+				Main:     debug.Module{Version: "(devel)"},
+				Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "f74a666bc412c47c0e046103b5fd2c1f0a30229"}},
+			},
+			want: "f74a666",
+		},
+		{
+			name: "devel build with no vcs info falls back to dev",
+			bi:   &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}},
+			want: "dev",
+		},
+		{
+			name: "empty module version with vcs revision",
+			bi: &debug.BuildInfo{
+				Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "abcdef0123456"}},
+			},
+			want: "abcdef0",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := resolveVersion(c.bi); got != c.want {
+				t.Errorf("resolveVersion = %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 

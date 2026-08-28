@@ -74,6 +74,19 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
+// TestServerVersion_PrefersLdflagsValue verifies that the ldflags-injected
+// version var (set by goreleaser for releases) takes precedence over the
+// build-info-derived value, so a release reports a clean tag with no "+dirty"
+// suffix even when the CI working tree was dirty at build time.
+func TestServerVersion_PrefersLdflagsValue(t *testing.T) {
+	old := version
+	version = "v9.9.9"
+	defer func() { version = old }()
+	if got := serverVersion(); got != "v9.9.9" {
+		t.Errorf("serverVersion = %q, want %q (ldflags value must win)", got, "v9.9.9")
+	}
+}
+
 // TestResolveVersion covers the version-resolution logic with synthetic build
 // info, including the release path (Main.Version = tag) that the live
 // handshake cannot exercise from a `go test` build (which reports "(devel)").

@@ -138,13 +138,26 @@ func negotiateProtocolVersion(requested string) string {
 	return supportedProtocolVersions[0]
 }
 
+// version is the build version reported in the MCP initialize handshake.
+// goreleaser injects it via ldflags (-X .../internal/mcp.version={{.Tag}}) so
+// releases report a clean tag (e.g. "v0.1.4") regardless of VCS dirty state —
+// Go's VCS stamping can add a "+dirty" suffix to debug.ReadBuildInfo when the
+// CI working tree has uncommitted changes, and that should not leak into the
+// client-facing version. When unset (local `go build`, `go test`), it stays
+// empty and serverVersion falls back to the build-info-derived value below.
+var version string
+
 // serverVersion reports the build version for the MCP initialize handshake.
-// Release builds (goreleaser builds from the tagged checkout, where Go
-// resolves the module version from the VCS tag) set bi.Main.Version to the
-// release tag (e.g. "v0.1.3"); a local `go build` away from a tag leaves it
-// "(devel)", so fall back to the short VCS revision, then "dev". Wiring this
-// keeps clients from showing a stale hardcoded version no matter what ships.
+// The ldflags-injected version (set by goreleaser for releases) wins; otherwise
+// fall back to debug.ReadBuildInfo: a release build from the tagged checkout
+// resolves bi.Main.Version to the tag (e.g. "v0.1.3"), a local `go build` away
+// from a tag leaves it "(devel)" so fall back to the short VCS revision, then
+// "dev". Wiring this keeps clients from showing a stale hardcoded version no
+// matter what ships.
 func serverVersion() string {
+	if version != "" {
+		return version
+	}
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "dev"

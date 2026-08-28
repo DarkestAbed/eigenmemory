@@ -17,10 +17,10 @@ curl -fsSL https://raw.githubusercontent.com/DarkestAbed/eigenmemory/main/instal
 Pin a version or install location:
 
 ```bash
-EIGENMEMORY_VERSION=v0.1.0 INSTALL_DIR=/usr/local/bin sh install.sh
+curl -fsSL https://raw.githubusercontent.com/DarkestAbed/eigenmemory/main/install.sh | EIGENMEMORY_VERSION=v0.1.0 INSTALL_DIR=/usr/local/bin sh
 ```
 
-**With Go** (any machine with Go 1.22+):
+**With Go** (any machine with Go 1.26+):
 
 ```bash
 go install github.com/DarkestAbed/eigenmemory/cmd/eigenmemory@latest

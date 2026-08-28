@@ -211,7 +211,7 @@ func ExtractLinks(body string) []string {
 					add(cleanInternalLink(dest))
 				}
 			} else if t, ok := n.(*ast.Text); ok {
-				nonCodeText.Write(t.Text(source))
+				nonCodeText.Write(t.Value(source))
 			}
 		} else if isCode {
 			codeDepth--

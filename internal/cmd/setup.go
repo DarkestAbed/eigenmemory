@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/javi/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
 )
 
 // SetupOptions controls the setup helper.

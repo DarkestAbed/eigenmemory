@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/types"
-	"github.com/javi/eigenmemory/internal/wiki"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/types"
+	"github.com/DarkestAbed/eigenmemory/internal/wiki"
 )
 
 // MemoryFile represents a parsed Claude Code memory file.

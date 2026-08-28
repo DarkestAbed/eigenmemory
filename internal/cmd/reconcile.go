@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/javi/eigenmemory/internal/adapters"
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/core"
-	"github.com/javi/eigenmemory/internal/wiki"
+	"github.com/DarkestAbed/eigenmemory/internal/adapters"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/wiki"
 )
 
 // ReconcileOptions controls the reconcile command.

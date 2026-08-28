@@ -1,4 +1,4 @@
-module github.com/javi/eigenmemory
+module github.com/DarkestAbed/eigenmemory
 
 go 1.26
 

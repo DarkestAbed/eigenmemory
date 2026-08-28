@@ -9,8 +9,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
 )
 
 // Handler is a function that handles a tool call and returns a result.

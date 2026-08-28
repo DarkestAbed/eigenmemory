@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/javi/eigenmemory/internal/core"
-	"github.com/javi/eigenmemory/internal/wiki"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/wiki"
 )
 
 // Reindex rebuilds the SQLite FTS5 index from the markdown wiki and

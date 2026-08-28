@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/core"
-	"github.com/javi/eigenmemory/internal/lint"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/lint"
 )
 
 // LintOptions controls the lint command.

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/javi/eigenmemory/internal/types"
-	"github.com/javi/eigenmemory/internal/wiki"
+	"github.com/DarkestAbed/eigenmemory/internal/types"
+	"github.com/DarkestAbed/eigenmemory/internal/wiki"
 )
 
 func TestSavePageAndSearch(t *testing.T) {

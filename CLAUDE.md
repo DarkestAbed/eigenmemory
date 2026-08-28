@@ -1,6 +1,6 @@
 # EigenMemory / CLAUDE.md — eigenmemory
 
-This project uses [EigenMemory](https://github.com/javi/eigenmemory), a persistent LLM Wiki for coding harnesses.
+This project uses [EigenMemory](https://github.com/DarkestAbed/eigenmemory), a persistent LLM Wiki for coding harnesses.
 
 ## What EigenMemory owns
 

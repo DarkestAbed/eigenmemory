@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/javi/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
 )
 
 func TestReconcileCmd_ScopeResolutionFails(t *testing.T) {

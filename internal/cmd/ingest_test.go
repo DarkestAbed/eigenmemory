@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/javi/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
 )
 
 func TestIngestCmd_InlineText(t *testing.T) {

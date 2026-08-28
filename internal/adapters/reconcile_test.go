@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/core"
-	"github.com/javi/eigenmemory/internal/types"
-	"github.com/javi/eigenmemory/internal/wiki"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/types"
+	"github.com/DarkestAbed/eigenmemory/internal/wiki"
 )
 
 func TestReconcileOnlyUpdatesChangedFiles(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/javi/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
 )
 
 // Operation identifies the kind of log entry.

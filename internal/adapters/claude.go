@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/types"
-	"github.com/javi/eigenmemory/internal/wiki"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/types"
+	"github.com/DarkestAbed/eigenmemory/internal/wiki"
 )
 
 // contentHash returns a stable content fingerprint used to detect drift

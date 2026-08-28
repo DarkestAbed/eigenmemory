@@ -317,3 +317,61 @@ func TestLinkSlug(t *testing.T) {
 		}
 	}
 }
+
+// TestLintLegacyMdSlugFallback verifies the read-time fallback for legacy
+// summary pages whose slug still carries the "-md" segment (pre-fix ingests):
+// a bare [[target]] link must resolve to the "target-md" page, neither flagging
+// a broken link nor marking the legacy page an orphan.
+func TestLintLegacyMdSlugFallback(t *testing.T) {
+	tmp := t.TempDir()
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("legacy")); err != nil {
+		t.Fatal(err)
+	}
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	if err := wiki.SaveIndex(store.Paths); err != nil {
+		t.Fatal(err)
+	}
+	// Index links both pages so neither is an orphan via the index.
+	indexBody := "# Index\n\n- [Target](summary/target-md.md)\n- [Linker](project/linker.md)\n"
+	if err := os.WriteFile(store.Paths.IndexFile, []byte(indexBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Legacy summary page whose slug carries the "-md" segment.
+	legacy := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(types.PageTypeSummary),
+		Slug:        "target-md",
+		Body:        "# target-md\n\nLegacy ingest slug.\n",
+	}
+	if err := store.SavePage(legacy, types.PageTypeSummary); err != nil {
+		t.Fatal(err)
+	}
+
+	// A page that links [[target]] (bare form). Pre-fix this was a broken link.
+	linker := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(types.PageTypeProject),
+		Slug:        "linker",
+		Body:        "# Linker\n\nSee [[target]].\n",
+	}
+	if err := store.SavePage(linker, types.PageTypeProject); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(store.Paths, store.Search)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, i := range report.Issues {
+		if i.Category == CategoryBrokenLink {
+			t.Errorf("broken-link flagged despite -md fallback: %v", i)
+		}
+		if i.Category == CategoryOrphan && i.Page == "summary/target-md" {
+			t.Errorf("legacy target-md flagged as orphan: %v", i)
+		}
+	}
+}

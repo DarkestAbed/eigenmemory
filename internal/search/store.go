@@ -459,8 +459,14 @@ func (s *Store) Neighbors(seeds []string, limit int) ([]SearchResult, error) {
 	inClause := strings.Join(placeholders, ",")
 
 	// Neighbor slugs reachable in either direction. Use UNION to dedup the
-	// slug column before fetching page rows.
-	neighborArgs := append(append([]any{}, args...), args...)
+	// slug column before fetching page rows. The third UNION arm is a legacy
+	// fallback: from_id is always a real page slug, but to_id is a bare slug
+	// (e.g. "target") that may need to reach a pre-fix "target-md" page whose
+	// slug still carries the segment Slugify once produced from ".md".
+	neighborArgs := make([]any, 0, len(args)*3)
+	neighborArgs = append(neighborArgs, args...)
+	neighborArgs = append(neighborArgs, args...)
+	neighborArgs = append(neighborArgs, args...)
 	query := fmt.Sprintf(`
 		SELECT DISTINCT p.id, p.slug, p.type, p.title, p.body, p.tags, p.updated_at
 		FROM pages p
@@ -468,6 +474,8 @@ func (s *Store) Neighbors(seeds []string, limit int) ([]SearchResult, error) {
 			SELECT to_id FROM relations WHERE from_id IN (%[1]s)
 			UNION
 			SELECT from_id FROM relations WHERE to_id IN (%[1]s)
+			UNION
+			SELECT to_id || '-md' FROM relations WHERE from_id IN (%[1]s)
 		)
 	`, inClause)
 	if limit > 0 {

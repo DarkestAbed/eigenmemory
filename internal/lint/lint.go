@@ -123,7 +123,11 @@ func Run(paths *config.Paths, search *search.Store) (*Report, error) {
 		if lowerSlug == "index" || lowerSlug == "log" {
 			continue
 		}
-		if !linked[lowerSlug] && !referencedBy[lowerSlug] {
+		// Legacy fallback: a "target-md" page (pre-fix ingest slug) is also
+		// considered referenced if anything links its bare form "target".
+		bareSlug := wiki.StripLegacyMdSuffix(lowerSlug)
+		if !linked[lowerSlug] && !referencedBy[lowerSlug] &&
+			!linked[bareSlug] && !referencedBy[bareSlug] {
 			report.Issues = append(report.Issues, Issue{
 				Severity: SeverityWarning,
 				Category: CategoryOrphan,
@@ -210,10 +214,17 @@ func linkSlug(link string) string {
 }
 
 // pageExists reports whether a link target matches any existing page slug.
+// As a legacy fallback, a bare link "target" also matches a page slug
+// "target-md" (the pre-fix ingest slug form), so [[target]] resolves to a
+// summary page ingested before the slug-extension fix.
 func pageExists(all map[string]*types.Page, link string) bool {
 	for key := range all {
 		_, slug := splitPageKey(key)
-		if strings.ToLower(slug) == link {
+		lower := strings.ToLower(slug)
+		if lower == link {
+			return true
+		}
+		if lower == link+wiki.LegacyMdSuffix {
 			return true
 		}
 	}

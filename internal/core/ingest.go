@@ -51,13 +51,31 @@ func (s *Store) Ingest(opts IngestOptions) (string, error) {
 		return "", fmt.Errorf("index source: %w", err)
 	}
 
-	slug := wiki.Slugify(name)
+	// Strip a trailing ".md" (case-insensitive) before slugifying so an
+	// ingested "target.md" produces slug "target", matching how the link side
+	// (wiki.LinkToSlug / cleanWikilink) strips ".md". Without this, Slugify
+	// turned the extension into a segment ("target.md" -> "target-md") and
+	// [[target]] links could never resolve to the summary page. Only ".md" is
+	// stripped (not filepath.Ext) to stay symmetric with the link side.
+	base := name
+	if strings.HasSuffix(strings.ToLower(name), ".md") {
+		base = name[:len(name)-len(".md")]
+	}
+	slug := wiki.Slugify(base)
 	if slug == "" {
 		slug = source.ID[:12]
 	}
 
-	body := fmt.Sprintf("# Summary: %s\n\nRaw source stored at `.eigenmemory/sources/%s`.\n\n```\n%s\n```\n",
-		name, source.ID, truncate(string(data), 2000))
+	// Wrap the truncated digest in a fence taller than any backtick run it
+	// contains, so the source's own fences can never close the wrapping block
+	// and the digest renders as a verbatim quote (never as live markdown). This
+	// keeps wiki.ExtractLinks(summaryBody) deterministically empty for summary
+	// pages; source [[wikilinks]] are extracted separately from the full source
+	// by indexSourceLinks.
+	digest := truncate(string(data), 2000)
+	fence := wiki.FenceFor(digest)
+	body := fmt.Sprintf("# Summary: %s\n\nRaw source stored at `.eigenmemory/sources/%s`.\n\n%s\n%s\n%s\n",
+		name, source.ID, fence, digest, fence)
 
 	pageType := types.PageTypeSummary
 	var page *types.Page
@@ -79,6 +97,13 @@ func (s *Store) Ingest(opts IngestOptions) (string, error) {
 
 	if err := s.SavePage(page, pageType); err != nil {
 		return "", fmt.Errorf("save summary page: %w", err)
+	}
+	// Extract [[wikilinks]] from the full raw source (not the truncated body)
+	// and record them as graph edges. SavePage/IndexPage already cleared the
+	// slug's relations and reinserted frontmatter relations, so this restores
+	// the source-derived links_to edges for the current source set.
+	if err := s.indexSourceLinks(page); err != nil {
+		return "", fmt.Errorf("index source links: %w", err)
 	}
 	if err := s.SaveIndex(); err != nil {
 		return "", fmt.Errorf("save index: %w", err)

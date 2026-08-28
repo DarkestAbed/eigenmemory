@@ -72,3 +72,43 @@ func StripFooters(body string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// FenceFor returns a fenced-code-block delimiter at least one backtick longer
+// than the longest backtick run in content, so content can never close the
+// block. Used to wrap an ingested source digest: the source's own ``` fences
+// would otherwise break out of a fixed 3-backtick wrapper and render as live
+// markdown. The minimum is 3 (a standard fenced block) when content has no
+// backtick run of 3 or more.
+func FenceFor(content string) string {
+	longest, run := 0, 0
+	for _, r := range content {
+		if r == '`' {
+			run++
+			if run > longest {
+				longest = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	n := 3
+	if longest >= 3 {
+		n = longest + 1
+	}
+	return strings.Repeat("`", n)
+}
+
+// LegacyMdSuffix is the slug segment that pre-fix ingests accidentally carried:
+// Slugify maps "." to a segment, so an ingested "target.md" became slug
+// "target-md" while the link side (LinkToSlug/cleanWikilink) stripped ".md" and
+// resolved [[target]] to "target". Ingest now strips the extension first, but
+// existing wikis still hold summary/*-md.md pages. StripLegacyMdSuffix bridges
+// those legacy pages at read time until wikis are re-ingested.
+const LegacyMdSuffix = "-md"
+
+// StripLegacyMdSuffix removes a trailing "-md" segment from a slug, mapping a
+// legacy "target-md" slug back to the bare "target" form that current links
+// use. Slugs without the suffix are returned unchanged.
+func StripLegacyMdSuffix(slug string) string {
+	return strings.TrimSuffix(slug, LegacyMdSuffix)
+}

@@ -646,3 +646,56 @@ func TestSourceDisplayName_FromSummaryPage(t *testing.T) {
 		t.Errorf("SourceDisplayName unknown = %q, want empty", unknown)
 	}
 }
+
+// TestNeighbors_LegacyMdSlugFallback verifies the graph traversal fallback for
+// legacy summary pages whose slug carries the "-md" segment: a relation stored
+// with a bare to_id "target" must still reach the "target-md" page.
+func TestNeighbors_LegacyMdSlugFallback(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	legacy := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeSummary},
+		Slug:        "target-md",
+		Body:        "# target-md\n",
+		Path:        tmp + "/wiki/summary/target-md.md",
+	}
+	if err := store.IndexPage(legacy); err != nil {
+		t.Fatalf("IndexPage legacy: %v", err)
+	}
+
+	carrier := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeProject},
+		Slug:        "carrier",
+		Body:        "# Carrier\n",
+		Path:        tmp + "/wiki/project/carrier.md",
+	}
+	if err := store.IndexPage(carrier); err != nil {
+		t.Fatalf("IndexPage carrier: %v", err)
+	}
+
+	// carrier links [[target]] -> bare slug "target"; the page is "target-md".
+	if err := store.IndexBodyLinks("carrier", []string{"target"}); err != nil {
+		t.Fatalf("IndexBodyLinks: %v", err)
+	}
+
+	neighbors, err := store.Neighbors([]string{"carrier"}, 5)
+	if err != nil {
+		t.Fatalf("Neighbors: %v", err)
+	}
+	var found bool
+	for _, n := range neighbors {
+		if n.Slug == "target-md" && n.MatchSource == "graph" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("legacy target-md neighbor not reached via -md fallback; neighbors = %+v", neighbors)
+	}
+}

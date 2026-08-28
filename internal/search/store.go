@@ -140,12 +140,17 @@ func (s *Store) IndexRelations(fromSlug string, relations []types.Relation) erro
 // (e.g. via wiki.LinkToSlug). IndexPage clears all relations for a slug
 // (including prior links_to) before inserting frontmatter relations, so call
 // this after IndexPage to restore the body edges for the current body.
+//
+// On conflict with a same-(from,to,links_to) row already inserted from
+// frontmatter, the existing row is left untouched: frontmatter is the
+// authoritative source of an authored links_to edge, and a body link to the
+// same target must not relabel it as body-derived.
 func (s *Store) IndexBodyLinks(fromSlug string, targets []string) error {
 	for _, to := range targets {
 		if _, err := s.db.Exec(`
 			INSERT INTO relations (from_id, to_id, relation_type, provenance)
 			VALUES (?, ?, 'links_to', 'body')
-			ON CONFLICT(from_id, to_id, relation_type) DO UPDATE SET provenance = excluded.provenance
+			ON CONFLICT(from_id, to_id, relation_type) DO NOTHING
 		`, fromSlug, to); err != nil {
 			return fmt.Errorf("index body link %s -> %s: %w", fromSlug, to, err)
 		}

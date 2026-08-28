@@ -186,11 +186,27 @@ func ExtractLinks(body string) []string {
 
 	// codeDepth tracks how deep we are inside code blocks/spans. Text and
 	// link nodes nested in code are literal, not edges. Non-code text is
-	// accumulated into a buffer and scanned for [[wikilinks]] once at the
-	// end, because goldmark may split a single [[...]] across several
-	// *ast.Text nodes.
+	// accumulated into a buffer and scanned for [[wikilinks]], because goldmark
+	// may split a single [[...]] across several sibling *ast.Text nodes.
+	//
+	// The buffer is flushed at every non-Text boundary (a code span/block, a
+	// block-level container, a link, …) so that a [[wikilink]] can only form
+	// within one contiguous run of sibling Text nodes. Without this, text
+	// separated by an inline code span ("[[target" + `code` + "]]") or by a
+	// block boundary would stitch together into a false edge. Sibling Text
+	// nodes have no intervening non-Text node in the walk, so flushing at
+	// non-Text boundaries does not break the split-[[...]] case.
 	codeDepth := 0
 	var nonCodeText bytes.Buffer
+	flush := func() {
+		for _, match := range wikilinkRe.FindAllStringSubmatch(nonCodeText.String(), -1) {
+			cleaned := cleanWikilink(match[1])
+			if cleaned != "" && isInternalLink(cleaned) {
+				add(cleaned)
+			}
+		}
+		nonCodeText.Reset()
+	}
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		isCode := false
 		switch n.(type) {
@@ -200,31 +216,34 @@ func ExtractLinks(body string) []string {
 		if entering {
 			if isCode {
 				codeDepth++
+				// Entering a code region ends the current non-code text run.
+				flush()
 				return ast.WalkContinue, nil
 			}
 			if codeDepth > 0 {
 				return ast.WalkContinue, nil
 			}
 			if link, ok := n.(*ast.Link); ok {
+				// A link node is a boundary between sibling text runs.
+				flush()
 				dest := string(link.Destination)
 				if isInternalLink(dest) {
 					add(cleanInternalLink(dest))
 				}
-			} else if t, ok := n.(*ast.Text); ok {
+				return ast.WalkContinue, nil
+			}
+			if t, ok := n.(*ast.Text); ok {
 				nonCodeText.Write(t.Value(source))
+			} else {
+				// Any other non-Text node (block container, etc.) is a boundary.
+				flush()
 			}
 		} else if isCode {
 			codeDepth--
 		}
 		return ast.WalkContinue, nil
 	})
-
-	for _, match := range wikilinkRe.FindAllStringSubmatch(nonCodeText.String(), -1) {
-		cleaned := cleanWikilink(match[1])
-		if cleaned != "" && isInternalLink(cleaned) {
-			add(cleaned)
-		}
-	}
+	flush()
 
 	return links
 }

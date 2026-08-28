@@ -391,6 +391,52 @@ func TestIndexBodyLinks(t *testing.T) {
 	}
 }
 
+// TestIndexBodyLinks_PreservesFrontmatterProvenance is a regression test for
+// the ON CONFLICT overwrite: if frontmatter already declares a links_to edge
+// to a target, body-link indexing for the same target must not relabel that
+// authored edge as body-derived. Frontmatter is authoritative.
+func TestIndexBodyLinks_PreservesFrontmatterProvenance(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Page with a frontmatter links_to relation (provenance "authored") to
+	// auth-service, the same target its body links.
+	source := &types.Page{
+		Frontmatter: types.Frontmatter{
+			ID: types.NewID(),
+			Relations: []types.Relation{
+				{From: "auth-migration", To: "auth-service", Type: "links_to", Provenance: "authored"},
+			},
+		},
+		Slug: "auth-migration",
+		Body: "# Auth Migration\n\nDepends on [[auth-service]].\n",
+		Path: tmp + "/wiki/project/auth-migration.md",
+	}
+	if err := store.IndexPage(source); err != nil {
+		t.Fatalf("IndexPage: %v", err)
+	}
+	if err := store.IndexBodyLinks("auth-migration", []string{"auth-service"}); err != nil {
+		t.Fatalf("IndexBodyLinks: %v", err)
+	}
+
+	relations, err := store.ListRelations()
+	if err != nil {
+		t.Fatalf("ListRelations: %v", err)
+	}
+	if len(relations) != 1 {
+		t.Fatalf("len(relations) = %d, want 1", len(relations))
+	}
+	if relations[0].Provenance != "authored" {
+		t.Errorf("provenance = %q, want %q (frontmatter must not be relabeled by body link)", relations[0].Provenance, "authored")
+	}
+}
+
 func TestSearchWithGraph_ExpandsNeighbors(t *testing.T) {
 	tmp := t.TempDir()
 	paths := config.PathsFor(tmp)

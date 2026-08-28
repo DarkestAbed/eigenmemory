@@ -93,6 +93,36 @@ func TestExtractLinks(t *testing.T) {
 	}
 }
 
+// TestExtractLinks_NoStitchingAcrossBoundaries is a regression test for the
+// buffer-accumulation bug: non-code *ast.Text was concatenated across inline
+// code spans and block boundaries, so "[[target" + `code` + "]]" (or the same
+// split across paragraphs) stitched into a false [[wikilink]] graph edge.
+// The buffer must flush at every non-Text boundary so a [[...]] can only form
+// within one contiguous run of sibling Text nodes.
+func TestExtractLinks_NoStitchingAcrossBoundaries(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{
+			"inline code span between brackets",
+			"Before [[target then `code` here ]] after.",
+		},
+		{
+			"block boundary between brackets",
+			"Para one ends with [[target\n\n]] now continues.",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			links := ExtractLinks(c.body)
+			for _, l := range links {
+				t.Errorf("unexpected stitched edge %q for case %q", l, c.name)
+			}
+		})
+	}
+}
+
 func TestLinkToSlug(t *testing.T) {
 	cases := []struct {
 		in, want string

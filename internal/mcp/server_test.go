@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/core"
-	"github.com/javi/eigenmemory/internal/types"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/types"
 )
 
 func TestInitialize(t *testing.T) {

@@ -9,7 +9,7 @@ branch; there is no long-term support for older tags.
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
-- Preferred: use [GitHub Security Advisories](https://github.com/javi/eigenmemory/security/advisories/new)
+- Preferred: use [GitHub Security Advisories](https://github.com/DarkestAbed/eigenmemory/security/advisories/new)
   for this repository to open a private report.
 - Alternative: email **thedarkestabed@gmail.com** with a description of the issue, the
   affected version/commit, and reproduction steps if available.

@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/javi/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
 )
 
 // IngestOptions controls the ingest command.

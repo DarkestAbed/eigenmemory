@@ -10,8 +10,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/types"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/types"
 )
 
 // Store wraps the SQLite connection and indexing operations.

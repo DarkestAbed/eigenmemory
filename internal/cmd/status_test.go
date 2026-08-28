@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
 )
 
 func TestStatus_NoWikiFound(t *testing.T) {

@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/core"
-	"github.com/javi/eigenmemory/internal/wiki"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/wiki"
 )
 
 // QueryOptions controls the query command.

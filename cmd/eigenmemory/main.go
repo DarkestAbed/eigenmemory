@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/javi/eigenmemory/internal/cmd"
-	"github.com/javi/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/cmd"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
 )
 
 var rootCmd = &cobra.Command{

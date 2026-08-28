@@ -3,7 +3,7 @@ package templates
 // CLAUDE returns the default CLAUDE.md content for an EigenMemory-enabled project.
 func CLAUDE(projectName string) string {
 	return "# EigenMemory / CLAUDE.md — " + projectName + "\n\n" +
-		"This project uses [EigenMemory](https://github.com/javi/eigenmemory), a persistent LLM Wiki for coding harnesses.\n\n" +
+		"This project uses [EigenMemory](https://github.com/DarkestAbed/eigenmemory), a persistent LLM Wiki for coding harnesses.\n\n" +
 		"## What EigenMemory owns\n\n" +
 		"The directory `.eigenmemory/` is maintained by the agent. Do not hand-edit files there unless you know what you are doing. The canonical store is:\n\n" +
 		"- `.eigenmemory/wiki/` — agent-maintained markdown pages with YAML frontmatter.\n" +

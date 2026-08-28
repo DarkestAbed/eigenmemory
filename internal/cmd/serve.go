@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/javi/eigenmemory/internal/core"
-	"github.com/javi/eigenmemory/internal/mcp"
+	"github.com/DarkestAbed/eigenmemory/internal/core"
+	"github.com/DarkestAbed/eigenmemory/internal/mcp"
 )
 
 // Serve starts the EigenMemory MCP server over stdio.

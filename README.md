@@ -6,11 +6,33 @@ A persistent, cross-tool LLM memory layer for coding harnesses, built on the [LL
 
 EigenMemory keeps a single, markdown-based LLM Wiki as the canonical store and exposes it to Claude Code, Zed, and any MCP-speaking tool through a local stdio server. Tool-native memory files are treated as **projections** of the wiki, not independent sources of truth.
 
+## Install
+
+**Install script** (no Go required; downloads the latest release from GitHub and verifies its checksum):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DarkestAbed/eigenmemory/main/install.sh | sh
+```
+
+Pin a version or install location:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DarkestAbed/eigenmemory/main/install.sh | EIGENMEMORY_VERSION=v0.1.0 INSTALL_DIR=/usr/local/bin sh
+```
+
+**With Go** (any machine with Go 1.26+):
+
+```bash
+go install github.com/DarkestAbed/eigenmemory/cmd/eigenmemory@latest
+```
+
+**Manual**: grab a `tar.gz`/`zip` from the [releases page](https://github.com/DarkestAbed/eigenmemory/releases) (linux/darwin/windows × amd64/arm64) and put the binary on your `PATH`.
+
 ## Quickstart
 
 ```bash
-# Download the binary for your OS from the releases page and put it on PATH.
-eigenmemory init my-project
+cd path/to/your-project
+eigenmemory init
 ```
 
 This creates:

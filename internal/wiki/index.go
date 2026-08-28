@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/javi/eigenmemory/internal/config"
-	"github.com/javi/eigenmemory/internal/types"
+	"github.com/DarkestAbed/eigenmemory/internal/config"
+	"github.com/DarkestAbed/eigenmemory/internal/types"
 )
 
 // IndexEntry represents a single row in the index catalog.

@@ -65,6 +65,15 @@ func TestInitialize(t *testing.T) {
 	if result.ServerInfo.Name != "eigenmemory" {
 		t.Errorf("server name = %q, want eigenmemory", result.ServerInfo.Name)
 	}
+	// Version must be wired to the build, not a stale hardcoded "0.1.0".
+	// A local `go test` build yields "(devel)" → serverVersion falls back to the
+	// short VCS revision, so any non-empty, non-"0.1.0" value passes.
+	if result.ServerInfo.Version == "" {
+		t.Errorf("server version is empty; want build-derived version")
+	}
+	if result.ServerInfo.Version == "0.1.0" {
+		t.Errorf("server version = %q (stale hardcoded literal); want build-derived version", result.ServerInfo.Version)
+	}
 }
 
 func TestToolsList(t *testing.T) {

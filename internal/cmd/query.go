@@ -43,7 +43,7 @@ func Query(opts QueryOptions) error {
 		opts.Limit = 5
 	}
 
-	results, err := store.Search.Search(opts.Query, opts.Limit)
+	results, err := store.Search.SearchWithGraph(opts.Query, opts.Limit)
 	if err != nil {
 		return fmt.Errorf("search: %w", err)
 	}
@@ -59,7 +59,18 @@ func Query(opts QueryOptions) error {
 		if len(body) > 400 {
 			body = body[:400] + "..."
 		}
-		fmt.Printf("%d. %s (%s/%s)\n%s\n\n", i+1, r.Title, r.Type, r.Slug, body)
+		marker := ""
+		var extra string
+		switch r.MatchSource {
+		case "graph":
+			marker = " (graph)"
+		case "source":
+			marker = " (source)"
+			if r.SourceID != "" {
+				extra = fmt.Sprintf("\nFull source: .eigenmemory/sources/%s", r.SourceID)
+			}
+		}
+		fmt.Printf("%d. %s (%s/%s%s)\n%s%s\n\n", i+1, r.Title, r.Type, r.Slug, marker, body, extra)
 	}
 
 	fmt.Println("Cite the relevant page(s) above when synthesizing your answer.")

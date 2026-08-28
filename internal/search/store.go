@@ -134,6 +134,30 @@ func (s *Store) IndexRelations(fromSlug string, relations []types.Relation) erro
 	return nil
 }
 
+// IndexBodyLinks records the bare-slug targets of the body links on a page as
+// untyped "links_to" edges with provenance "body". It is idempotent via the
+// relations primary key. Callers must pass already-normalized bare slugs
+// (e.g. via wiki.LinkToSlug). IndexPage clears all relations for a slug
+// (including prior links_to) before inserting frontmatter relations, so call
+// this after IndexPage to restore the body edges for the current body.
+//
+// On conflict with a same-(from,to,links_to) row already inserted from
+// frontmatter, the existing row is left untouched: frontmatter is the
+// authoritative source of an authored links_to edge, and a body link to the
+// same target must not relabel it as body-derived.
+func (s *Store) IndexBodyLinks(fromSlug string, targets []string) error {
+	for _, to := range targets {
+		if _, err := s.db.Exec(`
+			INSERT INTO relations (from_id, to_id, relation_type, provenance)
+			VALUES (?, ?, 'links_to', 'body')
+			ON CONFLICT(from_id, to_id, relation_type) DO NOTHING
+		`, fromSlug, to); err != nil {
+			return fmt.Errorf("index body link %s -> %s: %w", fromSlug, to, err)
+		}
+	}
+	return nil
+}
+
 // ListRelations returns every relation recorded in the index.
 func (s *Store) ListRelations() ([]types.Relation, error) {
 	rows, err := s.db.Query(`SELECT from_id, to_id, relation_type, provenance FROM relations`)
@@ -167,19 +191,113 @@ func (s *Store) CountRelations() (int, error) {
 	return count, nil
 }
 
-// IndexSource inserts or updates a source record in the SQLite index. The
-// on-disk file under .eigenmemory/sources/ remains the immutable canonical
-// copy; this row exists so `sources` is queryable rather than dead schema.
-func (s *Store) IndexSource(id, path, sha256, storedAt string) error {
+// IndexSource inserts or updates a source record in the SQLite index and
+// indexes its full content for full-text search. The on-disk file under
+// .eigenmemory/sources/ remains the immutable canonical copy; the `sources`
+// row makes metadata queryable and the `source_docs` row (synced to
+// sources_fts by triggers) makes the full content searchable past the ~2KB
+// summary-page truncation.
+func (s *Store) IndexSource(id, path, sha256, storedAt, name string, content []byte) error {
 	_, err := s.db.Exec(`
 		INSERT INTO sources (id, path, sha256, stored_at)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET path = excluded.path, sha256 = excluded.sha256, stored_at = excluded.stored_at
 	`, id, path, sha256, storedAt)
 	if err != nil {
-		return fmt.Errorf("index source: %w", err)
+		return fmt.Errorf("index source metadata: %w", err)
+	}
+	if _, err := s.db.Exec(`
+		INSERT INTO source_docs (id, name, content)
+		VALUES (?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET name = excluded.name, content = excluded.content
+	`, id, name, string(content)); err != nil {
+		return fmt.Errorf("index source content: %w", err)
 	}
 	return nil
+}
+
+// SourceDisplayName returns a human-readable name for a source by looking up
+// the summary page that references it (the summary page title encodes the
+// source name used at ingest time — the name is not stored on disk). Returns
+// "" if no summary page references the source.
+func (s *Store) SourceDisplayName(sourceID string) (string, error) {
+	var title sql.NullString
+	err := s.db.QueryRow(`
+		SELECT title FROM pages
+		WHERE type = 'summary' AND (',' || sources || ',' LIKE '%,' || ? || ',%')
+		LIMIT 1
+	`, sourceID).Scan(&title)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("lookup source name: %w", err)
+	}
+	return title.String, nil
+}
+
+// searchSources runs a full-text query over the full content of indexed
+// sources, with the same AND-first / OR-fallback robustness as page search.
+// Each hit is a SearchResult with MatchSource="source", a snippet of the
+// matching passage in Body, and the full source id in SourceID.
+func (s *Store) searchSources(query string, limit int) ([]SearchResult, error) {
+	tokens := stripStopwords(strings.Fields(query))
+	match := buildMatch(tokens, " ")
+	hits, err := s.searchSourcesMatch(match, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(hits) > 0 {
+		return hits, nil
+	}
+	return s.searchSourcesMatch(buildMatch(tokens, " OR "), limit)
+}
+
+func (s *Store) searchSourcesMatch(match string, limit int) ([]SearchResult, error) {
+	if strings.TrimSpace(match) == "" || limit <= 0 {
+		return nil, nil
+	}
+	rows, err := s.db.Query(`
+		SELECT d.id, d.name, snippet(sources_fts, 1, '**', '**', ' … ', 24), bm25(sources_fts)
+		FROM sources_fts
+		JOIN source_docs d ON d.rowid = sources_fts.rowid
+		WHERE sources_fts MATCH ?
+		ORDER BY rank
+		LIMIT ?
+	`, match, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search sources: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []SearchResult
+	for rows.Next() {
+		var id, name string
+		var snippet sql.NullString
+		var rank float64
+		if err := rows.Scan(&id, &name, &snippet, &rank); err != nil {
+			return nil, fmt.Errorf("scan source hit: %w", err)
+		}
+		title := name
+		if title == "" {
+			title = id[:min(12, len(id))]
+		}
+		slug := id
+		if len(slug) > 12 {
+			slug = slug[:12]
+		}
+		out = append(out, SearchResult{
+			ID:          id,
+			Slug:        slug,
+			Type:        "source",
+			Title:       title,
+			Body:        snippet.String,
+			Rank:        rank,
+			MatchSource: "source",
+			SourceID:    id,
+		})
+	}
+	return out, rows.Err()
 }
 
 // CountSources returns the number of indexed sources.
@@ -200,8 +318,9 @@ func (s *Store) RemovePage(id string) error {
 	return nil
 }
 
-// Clear removes all indexed pages, relations, and sources. Use with Reindex
-// workflows that rebuild the entire index from disk.
+// Clear removes all indexed pages, relations, sources, and source content.
+// Use with Reindex workflows that rebuild the entire index from disk. Deleting
+// source_docs cascades to sources_fts via triggers.
 func (s *Store) Clear() error {
 	if _, err := s.db.Exec(`DELETE FROM pages`); err != nil {
 		return fmt.Errorf("clear index: %w", err)
@@ -211,6 +330,9 @@ func (s *Store) Clear() error {
 	}
 	if _, err := s.db.Exec(`DELETE FROM sources`); err != nil {
 		return fmt.Errorf("clear sources: %w", err)
+	}
+	if _, err := s.db.Exec(`DELETE FROM source_docs`); err != nil {
+		return fmt.Errorf("clear source docs: %w", err)
 	}
 	return nil
 }
@@ -225,12 +347,30 @@ type SearchResult struct {
 	Tags    string
 	Updated string
 	Rank    float64
+	// MatchSource is "fts" for direct page full-text hits, "source" for hits
+	// from the full (untruncated) source content, and "graph" for pages pulled
+	// in by one-hop relation traversal of an FTS hit. Empty for results built by
+	// older callers that only ran full-text search.
+	MatchSource string
+	// SourceID is the full SHA-256 source id for MatchSource="source" results,
+	// so callers can point at .eigenmemory/sources/<id>. Empty otherwise.
+	SourceID string
 }
 
-// Search runs an FTS5 query and returns ranked results.
+// Search runs an FTS5 query and returns ranked results. It uses strict
+// implicit-AND semantics (every non-stopword token required). For the
+// recall-fallback path used by query/recall, see SearchWithGraph, which falls
+// back to OR when AND yields nothing.
 func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
-	ftsQuery := fts5Escape(query)
+	return s.searchPagesMatch(fts5Escape(query), limit)
+}
 
+// searchPagesMatch runs a prebuilt FTS5 MATCH string against pages_fts and
+// fetches the corresponding page rows. Results are MatchSource="fts".
+func (s *Store) searchPagesMatch(match string, limit int) ([]SearchResult, error) {
+	if strings.TrimSpace(match) == "" {
+		return nil, nil
+	}
 	// First query FTS5 for ranked rowids.
 	rows, err := s.db.Query(`
 		SELECT rowid, rank
@@ -238,7 +378,7 @@ func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
 		WHERE pages_fts MATCH ?
 		ORDER BY rank
 		LIMIT ?
-	`, ftsQuery, limit)
+	`, match, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -268,6 +408,7 @@ func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
 	for _, hit := range hits {
 		var r SearchResult
 		r.Rank = hit.rank
+		r.MatchSource = "fts"
 		err := s.db.QueryRow(`
 			SELECT id, slug, type, title, body, tags, updated_at
 			FROM pages
@@ -280,6 +421,115 @@ func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
 		}
 		results = append(results, r)
 	}
+	return results, nil
+}
+
+// searchPagesWithFallback runs a page query as implicit-AND first; if that
+// returns nothing (a long natural-language question that ANDs too many tokens
+// to zero hits), it retries as OR so the most-matching pages still surface,
+// BM25-ranked. This keeps keyword queries precise while rescuing NL queries.
+func (s *Store) searchPagesWithFallback(query string, limit int) ([]SearchResult, error) {
+	tokens := stripStopwords(strings.Fields(query))
+	hits, err := s.searchPagesMatch(buildMatch(tokens, " "), limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(hits) > 0 {
+		return hits, nil
+	}
+	return s.searchPagesMatch(buildMatch(tokens, " OR "), limit)
+}
+
+// Neighbors returns up to limit pages reachable in one hop from the given
+// slugs via the relations table (either direction). Pages already in the
+// seed set are excluded. Results are marked MatchSource="graph".
+func (s *Store) Neighbors(seeds []string, limit int) ([]SearchResult, error) {
+	if len(seeds) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	// Build placeholders for the IN clause.
+	placeholders := make([]string, len(seeds))
+	args := make([]any, 0, len(seeds))
+	seedSet := make(map[string]bool, len(seeds))
+	for i, slug := range seeds {
+		placeholders[i] = "?"
+		args = append(args, slug)
+		seedSet[strings.ToLower(slug)] = true
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	// Neighbor slugs reachable in either direction. Use UNION to dedup the
+	// slug column before fetching page rows.
+	neighborArgs := append(append([]any{}, args...), args...)
+	query := fmt.Sprintf(`
+		SELECT DISTINCT p.id, p.slug, p.type, p.title, p.body, p.tags, p.updated_at
+		FROM pages p
+		WHERE p.slug IN (
+			SELECT to_id FROM relations WHERE from_id IN (%[1]s)
+			UNION
+			SELECT from_id FROM relations WHERE to_id IN (%[1]s)
+		)
+	`, inClause)
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit*4)
+	}
+	rows, err := s.db.Query(query, neighborArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("neighbors: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.ID, &r.Slug, &r.Type, &r.Title, &r.Body, &r.Tags, &r.Updated); err != nil {
+			return nil, fmt.Errorf("scan neighbor: %w", err)
+		}
+		if seedSet[strings.ToLower(r.Slug)] {
+			continue
+		}
+		r.MatchSource = "graph"
+		out = append(out, r)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, rows.Err()
+}
+
+// SearchWithGraph answers a query by combining three result sources, in order:
+//  1. Page full-text hits (MatchSource "fts"), via searchPagesWithFallback —
+//     strict AND first, OR fallback so long natural-language questions don't
+//     silently return nothing.
+//  2. Source full-text hits (MatchSource "source") over the full (untruncated)
+//     source content — see searchSources.
+//  3. One-hop graph neighbors of the page hits (MatchSource "graph").
+func (s *Store) SearchWithGraph(query string, limit int) ([]SearchResult, error) {
+	hits, err := s.searchPagesWithFallback(query, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	results := hits
+
+	if sourceHits, err := s.searchSources(query, limit); err != nil {
+		return nil, fmt.Errorf("search sources: %w", err)
+	} else {
+		results = append(results, sourceHits...)
+	}
+
+	if len(hits) == 0 {
+		return results, nil
+	}
+	seeds := make([]string, 0, len(hits))
+	for _, h := range hits {
+		seeds = append(seeds, h.Slug)
+	}
+	neighbors, err := s.Neighbors(seeds, limit)
+	if err != nil {
+		return nil, fmt.Errorf("expand graph: %w", err)
+	}
+	results = append(results, neighbors...)
 	return results, nil
 }
 
@@ -314,15 +564,51 @@ func (s *Store) ListAllSlugs() ([]string, error) {
 	return out, nil
 }
 
-// fts5Escape prepares a user query for the FTS5 MATCH operator.
+// fts5Escape prepares a user query for the FTS5 MATCH operator as an implicit
+// AND of every (stopword-stripped) token. Kept for strict-AND callers/tests.
 func fts5Escape(query string) string {
-	// FTS5 supports AND/OR/NOT prefixes. For simple agent queries we treat each
-	// whitespace-separated token as a required term.
-	tokens := strings.Fields(query)
+	return buildMatch(stripStopwords(strings.Fields(query)), " ")
+}
+
+// buildMatch builds an FTS5 MATCH string from tokens joined by op: " " yields
+// implicit AND (every token required), " OR " yields OR (any token, BM25-ranked).
+// Each token is quoted with embedded double-quotes escaped, so a token is
+// treated as a literal phrase of one word and never as FTS5 syntax.
+func buildMatch(tokens []string, op string) string {
+	quoted := make([]string, len(tokens))
 	for i, t := range tokens {
-		tokens[i] = fmt.Sprintf(`"%s"`, strings.ReplaceAll(t, `"`, `""`))
+		quoted[i] = fmt.Sprintf(`"%s"`, strings.ReplaceAll(t, `"`, `""`))
 	}
-	return strings.Join(tokens, " ")
+	return strings.Join(quoted, op)
+}
+
+// stopwords is a small English set of low-signal tokens that over-constrain an
+// implicit-AND query (long natural-language questions AND every word, so "how
+// is the …" can zero out an otherwise-relevant page). Matching is case-folded.
+var stopwords = map[string]struct{}{
+	"the": {}, "a": {}, "an": {}, "and": {}, "or": {}, "of": {}, "to": {}, "in": {},
+	"on": {}, "for": {}, "is": {}, "are": {}, "was": {}, "were": {}, "be": {}, "by": {},
+	"with": {}, "how": {}, "what": {}, "when": {}, "where": {}, "which": {}, "who": {},
+	"why": {}, "do": {}, "does": {}, "did": {}, "i": {}, "we": {}, "you": {}, "my": {},
+	"our": {}, "it": {}, "its": {}, "this": {}, "that": {}, "from": {}, "into": {},
+	"as": {}, "at": {},
+}
+
+// stripStopwords removes stopwords from tokens. If the result would be empty
+// (an all-stopword query), the original tokens are returned so the caller does
+// not run an empty MATCH.
+func stripStopwords(tokens []string) []string {
+	out := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		if _, stop := stopwords[strings.ToLower(t)]; stop {
+			continue
+		}
+		out = append(out, t)
+	}
+	if len(out) == 0 {
+		return tokens
+	}
+	return out
 }
 
 // extractTitle returns the first H1 from a markdown body.

@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/DarkestAbed/eigenmemory/internal/config"
@@ -65,7 +66,39 @@ func (s *Store) SavePage(page *types.Page, pageType types.PageType) error {
 	if err := s.Search.IndexPage(page); err != nil {
 		return fmt.Errorf("index page: %w", err)
 	}
+	if err := s.indexBodyLinks(page); err != nil {
+		return fmt.Errorf("index body links: %w", err)
+	}
 	return nil
+}
+
+// indexBodyLinks extracts internal links from a page's body and records them
+// as untyped links_to graph edges. Body links are derived, not authored, so
+// they live only in the search index — the page's frontmatter is never
+// mutated. Must run after IndexPage, which clears the slug's relations before
+// reinserting frontmatter relations.
+func (s *Store) indexBodyLinks(page *types.Page) error {
+	raw := wiki.ExtractLinks(page.Body)
+	if len(raw) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(raw))
+	var slugs []string
+	for _, l := range raw {
+		slug := wiki.LinkToSlug(l)
+		if slug == "" {
+			continue
+		}
+		if _, dup := seen[slug]; dup {
+			continue
+		}
+		seen[slug] = struct{}{}
+		slugs = append(slugs, slug)
+	}
+	if len(slugs) == 0 {
+		return nil
+	}
+	return s.Search.IndexBodyLinks(page.Slug, slugs)
 }
 
 // LoadPage reads a wiki page by type and slug.
@@ -98,6 +131,9 @@ func (s *Store) RebuildIndex() error {
 			if err := s.Search.IndexPage(page); err != nil {
 				return err
 			}
+			if err := s.indexBodyLinks(page); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -106,7 +142,18 @@ func (s *Store) RebuildIndex() error {
 		return err
 	}
 	for _, src := range sources {
-		if err := s.Search.IndexSource(src.ID, src.Path, src.SHA256, src.StoredAt.Format(time.RFC3339)); err != nil {
+		// The source name is not stored on disk; recover it from the summary
+		// page that references it (pages were indexed above, so the pages table
+		// is populated). Index the full source content for full-text search.
+		name, err := s.Search.SourceDisplayName(src.ID)
+		if err != nil {
+			return fmt.Errorf("lookup source name %s: %w", src.ID[:12], err)
+		}
+		content, err := os.ReadFile(src.Path)
+		if err != nil {
+			return fmt.Errorf("read source %s: %w", src.ID[:12], err)
+		}
+		if err := s.Search.IndexSource(src.ID, src.Path, src.SHA256, src.StoredAt.Format(time.RFC3339), name, content); err != nil {
 			return err
 		}
 	}

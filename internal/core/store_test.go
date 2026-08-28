@@ -203,3 +203,56 @@ func TestRebuildIndex(t *testing.T) {
 		t.Errorf("CountPages after rebuild = %d, want 1", count)
 	}
 }
+
+func TestSavePage_IndexesBodyLinks(t *testing.T) {
+	tmp := t.TempDir()
+	store, err := OpenAt(tmp)
+	if err != nil {
+		t.Fatalf("OpenAt: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Target page that the source will wikilink to.
+	target := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(types.PageTypeEntity),
+		Slug:        "auth-service",
+		Body:        "# Auth Service\n\nHandles login.",
+	}
+	if err := store.SavePage(target, types.PageTypeEntity); err != nil {
+		t.Fatalf("SavePage target: %v", err)
+	}
+
+	// Source page whose body wikilinks the target. The edge should be
+	// recorded automatically without any hand-authored frontmatter relation.
+	source := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(types.PageTypeProject),
+		Slug:        "auth-migration",
+		Body:        "# Auth Migration\n\nDepends on [[auth-service]].\n",
+	}
+	if err := store.SavePage(source, types.PageTypeProject); err != nil {
+		t.Fatalf("SavePage source: %v", err)
+	}
+
+	relations, err := store.Search.ListRelations()
+	if err != nil {
+		t.Fatalf("ListRelations: %v", err)
+	}
+	var found bool
+	for _, r := range relations {
+		if r.From == "auth-migration" && r.To == "auth-service" && r.Type == "links_to" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("body link not indexed; relations = %+v", relations)
+	}
+
+	// The body link must NOT have leaked into the page's frontmatter on disk.
+	loaded, err := wiki.LoadPage(store.Paths, types.PageTypeProject, "auth-migration")
+	if err != nil {
+		t.Fatalf("LoadPage: %v", err)
+	}
+	if len(loaded.Frontmatter.Relations) != 0 {
+		t.Errorf("frontmatter relations mutated by body-link indexing: %+v", loaded.Frontmatter.Relations)
+	}
+}

@@ -56,12 +56,25 @@ func TestSaveAndLoadPage(t *testing.T) {
 }
 
 func TestExtractLinks(t *testing.T) {
-	body := "See [auth service](entity/auth-service.md) and [concepts](concept/security.md#basics)."
+	body := strings.Join([]string{
+		"See [auth service](entity/auth-service.md) and [concepts](concept/security.md#basics).",
+		"Relates to [[deploy-pipeline]] and [[release-process|Release]] and [[index#section]].",
+		"Inert inline code: `[[nope-inline]]`.",
+		"Inert fenced block:",
+		"```",
+		"[[nope-fenced]]",
+		"```",
+	}, "\n")
 	links := ExtractLinks(body)
 
 	want := map[string]bool{
+		// Markdown links (type-prefixed, heading stripped).
 		"entity/auth-service": true,
 		"concept/security":    true,
+		// Wikilinks (alias and heading stripped, no type prefix here).
+		"deploy-pipeline":  true,
+		"release-process": true,
+		"index":            true,
 	}
 	got := make(map[string]bool)
 	for _, l := range links {
@@ -76,6 +89,55 @@ func TestExtractLinks(t *testing.T) {
 	for k := range got {
 		if !want[k] {
 			t.Errorf("unexpected link %q", k)
+		}
+	}
+}
+
+// TestExtractLinks_NoStitchingAcrossBoundaries is a regression test for the
+// buffer-accumulation bug: non-code *ast.Text was concatenated across inline
+// code spans and block boundaries, so "[[target" + `code` + "]]" (or the same
+// split across paragraphs) stitched into a false [[wikilink]] graph edge.
+// The buffer must flush at every non-Text boundary so a [[...]] can only form
+// within one contiguous run of sibling Text nodes.
+func TestExtractLinks_NoStitchingAcrossBoundaries(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{
+			"inline code span between brackets",
+			"Before [[target then `code` here ]] after.",
+		},
+		{
+			"block boundary between brackets",
+			"Para one ends with [[target\n\n]] now continues.",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			links := ExtractLinks(c.body)
+			for _, l := range links {
+				t.Errorf("unexpected stitched edge %q for case %q", l, c.name)
+			}
+		})
+	}
+}
+
+func TestLinkToSlug(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"entity/auth-service.md", "auth-service"},
+		{"entity/auth-service", "auth-service"},
+		{"auth-service", "auth-service"},
+		{"target|alias", "target"},
+		{"target#heading", "target"},
+		{"concept/security.md#basics", "security"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := LinkToSlug(c.in); got != c.want {
+			t.Errorf("LinkToSlug(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

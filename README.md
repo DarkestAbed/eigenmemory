@@ -99,7 +99,7 @@ Add to `~/.config/zed/settings.json`:
 - `eigenmemory status` — show wiki state.
 - `eigenmemory reconcile` — merge Claude Code native memory edits back into the wiki and regenerate the projection.
 - `eigenmemory reconcile --dry-run` — preview proposed reconciliation actions.
-- `eigenmemory query "..."` — natural-language recall with citations.
+- `eigenmemory query "..."` — natural-language recall with citations. Full-text hits are expanded by one graph hop over `[[wikilinks]]` and frontmatter `relations`, so related pages surface even without matching the query terms.
 - `eigenmemory setup --tool claude` — print `.mcp.json` snippet for Claude Code.
 - `eigenmemory setup --tool zed` — print `settings.json` snippet for Zed.
 
@@ -107,9 +107,9 @@ Add to `~/.config/zed/settings.json`:
 
 | Tool | Purpose |
 |------|---------|
-| `wiki_recall(query)` | Search the wiki. |
+| `wiki_recall(query)` | Search the wiki (full-text + one-hop graph expansion). |
 | `wiki_remember(fact, type, tags)` | Store a durable fact. |
-| `wiki_ingest(source)` | Ingest a raw source. |
+| `wiki_ingest(source)` | Ingest a raw source (summary-only; use `wiki_remember` to classify facts). |
 | `wiki_lint()` | Run health checks. |
 | `wiki_status()` | Inspect state and index health. |
 | `wiki_query(question)` | Ask a natural-language question. |

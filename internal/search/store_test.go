@@ -125,7 +125,7 @@ func TestIndexSource_CountsSources(t *testing.T) {
 	}
 	defer func() { _ = store.Close() }()
 
-	if err := store.IndexSource("abc123", "/tmp/whatever/abc123", "abc123", "2026-08-22T00:00:00Z"); err != nil {
+	if err := store.IndexSource("abc123", "/tmp/whatever/abc123", "abc123", "2026-08-22T00:00:00Z", "design doc", []byte("some source content")); err != nil {
 		t.Fatalf("IndexSource: %v", err)
 	}
 
@@ -138,7 +138,7 @@ func TestIndexSource_CountsSources(t *testing.T) {
 	}
 
 	// Re-indexing the same id must upsert, not duplicate.
-	if err := store.IndexSource("abc123", "/tmp/whatever/abc123", "abc123", "2026-08-23T00:00:00Z"); err != nil {
+	if err := store.IndexSource("abc123", "/tmp/whatever/abc123", "abc123", "2026-08-23T00:00:00Z", "design doc", []byte("updated content")); err != nil {
 		t.Fatalf("re-IndexSource: %v", err)
 	}
 	count, err = store.CountSources()
@@ -318,5 +318,331 @@ func BenchmarkSearch(b *testing.B) {
 		if _, err := store.Search("login token", 5); err != nil {
 			b.Fatalf("Search: %v", err)
 		}
+	}
+}
+
+func TestIndexBodyLinks(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	target := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeEntity},
+		Slug:       "auth-service",
+		Body:       "# Auth Service\n",
+		Path:       tmp + "/wiki/entity/auth-service.md",
+	}
+	if err := store.IndexPage(target); err != nil {
+		t.Fatalf("IndexPage target: %v", err)
+	}
+
+	source := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeProject},
+		Slug:       "auth-migration",
+		Body:       "# Auth Migration\n\nDepends on [[auth-service]] and [[auth-service|alias]].\n",
+		Path:       tmp + "/wiki/project/auth-migration.md",
+	}
+	if err := store.IndexPage(source); err != nil {
+		t.Fatalf("IndexPage source: %v", err)
+	}
+	// Body links are recorded as links_to edges; duplicates collapse to one row.
+	if err := store.IndexBodyLinks("auth-migration", []string{"auth-service", "auth-service"}); err != nil {
+		t.Fatalf("IndexBodyLinks: %v", err)
+	}
+
+	count, err := store.CountRelations()
+	if err != nil {
+		t.Fatalf("CountRelations: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("CountRelations = %d, want 1 (deduped links_to)", count)
+	}
+
+	relations, err := store.ListRelations()
+	if err != nil {
+		t.Fatalf("ListRelations: %v", err)
+	}
+	if len(relations) != 1 || relations[0].To != "auth-service" || relations[0].Type != "links_to" || relations[0].Provenance != "body" {
+		t.Errorf("unexpected relation: %+v", relations)
+	}
+
+	// Re-running IndexPage clears all relations for the slug (including
+	// links_to); IndexBodyLinks must then restore them to stay idempotent.
+	if err := store.IndexPage(source); err != nil {
+		t.Fatalf("re-IndexPage: %v", err)
+	}
+	if _, err := store.CountRelations(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.IndexBodyLinks("auth-migration", []string{"auth-service"}); err != nil {
+		t.Fatalf("re-IndexBodyLinks: %v", err)
+	}
+	count, err = store.CountRelations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("CountRelations after re-index = %d, want 1", count)
+	}
+}
+
+// TestIndexBodyLinks_PreservesFrontmatterProvenance is a regression test for
+// the ON CONFLICT overwrite: if frontmatter already declares a links_to edge
+// to a target, body-link indexing for the same target must not relabel that
+// authored edge as body-derived. Frontmatter is authoritative.
+func TestIndexBodyLinks_PreservesFrontmatterProvenance(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Page with a frontmatter links_to relation (provenance "authored") to
+	// auth-service, the same target its body links.
+	source := &types.Page{
+		Frontmatter: types.Frontmatter{
+			ID: types.NewID(),
+			Relations: []types.Relation{
+				{From: "auth-migration", To: "auth-service", Type: "links_to", Provenance: "authored"},
+			},
+		},
+		Slug: "auth-migration",
+		Body: "# Auth Migration\n\nDepends on [[auth-service]].\n",
+		Path: tmp + "/wiki/project/auth-migration.md",
+	}
+	if err := store.IndexPage(source); err != nil {
+		t.Fatalf("IndexPage: %v", err)
+	}
+	if err := store.IndexBodyLinks("auth-migration", []string{"auth-service"}); err != nil {
+		t.Fatalf("IndexBodyLinks: %v", err)
+	}
+
+	relations, err := store.ListRelations()
+	if err != nil {
+		t.Fatalf("ListRelations: %v", err)
+	}
+	if len(relations) != 1 {
+		t.Fatalf("len(relations) = %d, want 1", len(relations))
+	}
+	if relations[0].Provenance != "authored" {
+		t.Errorf("provenance = %q, want %q (frontmatter must not be relabeled by body link)", relations[0].Provenance, "authored")
+	}
+}
+
+func TestSearchWithGraph_ExpandsNeighbors(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Seed page that the query will hit via FTS.
+	seed := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeProject},
+		Slug:        "auth-migration",
+		Body:        "# Auth Migration\n\nMigrate the login flow.",
+		Path:        tmp + "/wiki/project/auth-migration.md",
+	}
+	if err := store.IndexPage(seed); err != nil {
+		t.Fatalf("IndexPage seed: %v", err)
+	}
+
+	// Neighbor page with no overlapping FTS terms — only reachable via graph.
+	neighbor := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeEntity},
+		Slug:        "token-vault",
+		Body:        "# Token Vault\n\nStores refresh tokens.",
+		Path:        tmp + "/wiki/entity/token-vault.md",
+	}
+	if err := store.IndexPage(neighbor); err != nil {
+		t.Fatalf("IndexPage neighbor: %v", err)
+	}
+
+	// Edge seed -> neighbor.
+	if err := store.IndexBodyLinks("auth-migration", []string{"token-vault"}); err != nil {
+		t.Fatalf("IndexBodyLinks: %v", err)
+	}
+
+	results, err := store.SearchWithGraph("login flow", 5)
+	if err != nil {
+		t.Fatalf("SearchWithGraph: %v", err)
+	}
+	if len(results) < 2 {
+		t.Fatalf("len(results) = %d, want at least 2 (FTS hit + graph neighbor)", len(results))
+	}
+
+	var ftsSeen, graphSeen bool
+	for _, r := range results {
+		switch r.MatchSource {
+		case "fts":
+			if r.Slug == "auth-migration" {
+				ftsSeen = true
+			}
+		case "graph":
+			if r.Slug == "token-vault" {
+				graphSeen = true
+			}
+		}
+	}
+	if !ftsSeen {
+		t.Errorf("FTS hit auth-migration missing from results: %+v", results)
+	}
+	if !graphSeen {
+		t.Errorf("graph neighbor token-vault missing from results: %+v", results)
+	}
+
+	// The neighbor must not be duplicated as an FTS hit (its body has no
+	// "login flow" terms).
+	for _, r := range results {
+		if r.Slug == "token-vault" && r.MatchSource == "fts" {
+			t.Errorf("token-vault appeared as an FTS hit, should only be graph")
+		}
+	}
+}
+
+func TestSearch_ORFallbackRescuesNLQuery(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Page contains "login" and "token" but NOT "kubernetes", "access",
+	// "services", "setup". A strict-AND of all those NL tokens must miss.
+	page := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeEntity},
+		Slug:        "auth-service",
+		Body:        "# Auth Service\n\nHandles login and token refresh.",
+		Path:        tmp + "/wiki/entity/auth-service.md",
+	}
+	if err := store.IndexPage(page); err != nil {
+		t.Fatalf("IndexPage: %v", err)
+	}
+
+	// Strict AND (via Search) must find nothing for the over-constrained query.
+	hits, err := store.Search("how is the auth service set up for access and services", 5)
+	if err != nil {
+		t.Fatalf("Search AND: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("strict-AND returned %d hits, want 0 (over-constrained)", len(hits))
+	}
+
+	// OR fallback via searchPagesWithFallback must rescue the page.
+	rescued, err := store.searchPagesWithFallback("how is the auth service set up for access and services", 5)
+	if err != nil {
+		t.Fatalf("searchPagesWithFallback: %v", err)
+	}
+	if len(rescued) == 0 {
+		t.Errorf("OR fallback returned 0 hits, want the auth-service page rescued")
+	}
+}
+
+func TestStripStopwords_AllStopwords(t *testing.T) {
+	// An all-stopword query must fall back to the original tokens (no empty
+	// MATCH) rather than returning an empty slice.
+	got := stripStopwords([]string{"how", "is", "the", "and"})
+	if len(got) == 0 {
+		t.Errorf("stripStopwords of all-stopword query returned empty; want original tokens")
+	}
+}
+
+func TestIndexSource_FullContentSearchable(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// A source whose distinctive content sits well past the 2KB summary
+	// truncation cutoff. The summary page body only carries the prefix.
+	long := strings.Repeat("placeholder preamble line.\n", 200) // ~4.6KB
+	long += "kind-based deployment section with the distinctive token xyzzy-quirk.\n"
+	content := []byte("# Local K8s Cluster\n\n" + long)
+
+	if err := store.IndexSource("deadbeef", tmp+"/sources/deadbeef", "deadbeef", "2026-08-26T00:00:00Z", "local-k8s-cluster-setup", content); err != nil {
+		t.Fatalf("IndexSource: %v", err)
+	}
+
+	// Query the distinctive term that only appears past the 2KB cutoff.
+	hits, err := store.searchSources("xyzzy-quirk", 5)
+	if err != nil {
+		t.Fatalf("searchSources: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("searchSources = %d hits, want 1 (full content must be searchable past 2KB)", len(hits))
+	}
+	h := hits[0]
+	if h.MatchSource != "source" {
+		t.Errorf("MatchSource = %q, want source", h.MatchSource)
+	}
+	if h.SourceID != "deadbeef" {
+		t.Errorf("SourceID = %q, want deadbeef", h.SourceID)
+	}
+	if !strings.Contains(h.Body, "xyzzy-quirk") {
+		t.Errorf("snippet missing the matched term; got %q", h.Body)
+	}
+	if h.Title != "local-k8s-cluster-setup" {
+		t.Errorf("Title = %q, want local-k8s-cluster-setup", h.Title)
+	}
+}
+
+func TestSourceDisplayName_FromSummaryPage(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// A summary page whose sources frontmatter references the source id.
+	summary := &types.Page{
+		Frontmatter: types.Frontmatter{
+			ID:      types.NewID(),
+			Type:    types.PageTypeSummary,
+			Sources: []string{"feedface"},
+		},
+		Slug: "design-doc",
+		Body:  "# Summary: design doc\n\npreamble.\n",
+		Path:  tmp + "/wiki/summary/design-doc.md",
+	}
+	if err := store.IndexPage(summary); err != nil {
+		t.Fatalf("IndexPage summary: %v", err)
+	}
+
+	name, err := store.SourceDisplayName("feedface")
+	if err != nil {
+		t.Fatalf("SourceDisplayName: %v", err)
+	}
+	if name != "Summary: design doc" {
+		t.Errorf("SourceDisplayName = %q, want %q", name, "Summary: design doc")
+	}
+
+	// Unknown source id returns empty, no error.
+	unknown, err := store.SourceDisplayName("nope")
+	if err != nil {
+		t.Fatalf("SourceDisplayName unknown: %v", err)
+	}
+	if unknown != "" {
+		t.Errorf("SourceDisplayName unknown = %q, want empty", unknown)
 	}
 }

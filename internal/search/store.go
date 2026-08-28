@@ -134,6 +134,25 @@ func (s *Store) IndexRelations(fromSlug string, relations []types.Relation) erro
 	return nil
 }
 
+// IndexBodyLinks records the bare-slug targets of the body links on a page as
+// untyped "links_to" edges with provenance "body". It is idempotent via the
+// relations primary key. Callers must pass already-normalized bare slugs
+// (e.g. via wiki.LinkToSlug). IndexPage clears all relations for a slug
+// (including prior links_to) before inserting frontmatter relations, so call
+// this after IndexPage to restore the body edges for the current body.
+func (s *Store) IndexBodyLinks(fromSlug string, targets []string) error {
+	for _, to := range targets {
+		if _, err := s.db.Exec(`
+			INSERT INTO relations (from_id, to_id, relation_type, provenance)
+			VALUES (?, ?, 'links_to', 'body')
+			ON CONFLICT(from_id, to_id, relation_type) DO UPDATE SET provenance = excluded.provenance
+		`, fromSlug, to); err != nil {
+			return fmt.Errorf("index body link %s -> %s: %w", fromSlug, to, err)
+		}
+	}
+	return nil
+}
+
 // ListRelations returns every relation recorded in the index.
 func (s *Store) ListRelations() ([]types.Relation, error) {
 	rows, err := s.db.Query(`SELECT from_id, to_id, relation_type, provenance FROM relations`)
@@ -225,6 +244,10 @@ type SearchResult struct {
 	Tags    string
 	Updated string
 	Rank    float64
+	// MatchSource is "fts" for direct full-text hits and "graph" for pages
+	// pulled in by one-hop relation traversal of an FTS hit. Empty for results
+	// built by older callers that only ran full-text search.
+	MatchSource string
 }
 
 // Search runs an FTS5 query and returns ranked results.
@@ -268,6 +291,7 @@ func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
 	for _, hit := range hits {
 		var r SearchResult
 		r.Rank = hit.rank
+		r.MatchSource = "fts"
 		err := s.db.QueryRow(`
 			SELECT id, slug, type, title, body, tags, updated_at
 			FROM pages
@@ -281,6 +305,85 @@ func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
 		results = append(results, r)
 	}
 	return results, nil
+}
+
+// Neighbors returns up to limit pages reachable in one hop from the given
+// slugs via the relations table (either direction). Pages already in the
+// seed set are excluded. Results are marked MatchSource="graph".
+func (s *Store) Neighbors(seeds []string, limit int) ([]SearchResult, error) {
+	if len(seeds) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	// Build placeholders for the IN clause.
+	placeholders := make([]string, len(seeds))
+	args := make([]any, 0, len(seeds))
+	seedSet := make(map[string]bool, len(seeds))
+	for i, slug := range seeds {
+		placeholders[i] = "?"
+		args = append(args, slug)
+		seedSet[strings.ToLower(slug)] = true
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	// Neighbor slugs reachable in either direction. Use UNION to dedup the
+	// slug column before fetching page rows.
+	neighborArgs := append(append([]any{}, args...), args...)
+	query := fmt.Sprintf(`
+		SELECT DISTINCT p.id, p.slug, p.type, p.title, p.body, p.tags, p.updated_at
+		FROM pages p
+		WHERE p.slug IN (
+			SELECT to_id FROM relations WHERE from_id IN (%[1]s)
+			UNION
+			SELECT from_id FROM relations WHERE to_id IN (%[1]s)
+		)
+	`, inClause)
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit*4)
+	}
+	rows, err := s.db.Query(query, neighborArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("neighbors: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.ID, &r.Slug, &r.Type, &r.Title, &r.Body, &r.Tags, &r.Updated); err != nil {
+			return nil, fmt.Errorf("scan neighbor: %w", err)
+		}
+		if seedSet[strings.ToLower(r.Slug)] {
+			continue
+		}
+		r.MatchSource = "graph"
+		out = append(out, r)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, rows.Err()
+}
+
+// SearchWithGraph runs a full-text query and then expands the result set with
+// one-hop graph neighbors of the FTS hits. FTS hits come first (MatchSource
+// "fts"), followed by up to limit graph neighbors (MatchSource "graph").
+func (s *Store) SearchWithGraph(query string, limit int) ([]SearchResult, error) {
+	hits, err := s.Search(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(hits) == 0 {
+		return hits, nil
+	}
+	seeds := make([]string, 0, len(hits))
+	for _, h := range hits {
+		seeds = append(seeds, h.Slug)
+	}
+	neighbors, err := s.Neighbors(seeds, limit)
+	if err != nil {
+		return nil, fmt.Errorf("expand graph: %w", err)
+	}
+	return append(hits, neighbors...), nil
 }
 
 // CountPages returns the number of indexed pages.

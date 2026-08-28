@@ -196,7 +196,7 @@ func handleWikiRecall(ctx context.Context, s *Server, args json.RawMessage) (any
 	}
 
 	store := s.CurrentStore()
-	results, err := store.Search.Search(params.Query, params.Limit)
+	results, err := store.Search.SearchWithGraph(params.Query, params.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -207,7 +207,11 @@ func handleWikiRecall(ctx context.Context, s *Server, args json.RawMessage) (any
 		if len(summary) > 200 {
 			summary = summary[:200] + "..."
 		}
-		lines = append(lines, fmt.Sprintf("%d. %s (%s/%s)\n   %s", i+1, r.Title, r.Type, r.Slug, summary))
+		marker := ""
+		if r.MatchSource == "graph" {
+			marker = " (graph)"
+		}
+		lines = append(lines, fmt.Sprintf("%d. %s (%s/%s%s)\n   %s", i+1, r.Title, r.Type, r.Slug, marker, summary))
 	}
 
 	if len(lines) == 0 {
@@ -456,7 +460,7 @@ func handleWikiQuery(ctx context.Context, s *Server, args json.RawMessage) (any,
 	}
 
 	store := s.CurrentStore()
-	results, err := store.Search.Search(params.Query, params.Limit)
+	results, err := store.Search.SearchWithGraph(params.Query, params.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -474,7 +478,11 @@ func handleWikiQuery(ctx context.Context, s *Server, args json.RawMessage) (any,
 		if len(body) > 400 {
 			body = body[:400] + "..."
 		}
-		lines = append(lines, fmt.Sprintf("%d. %s (%s/%s)\n%s\n", i+1, r.Title, r.Type, r.Slug, body))
+		marker := ""
+		if r.MatchSource == "graph" {
+			marker = " (graph)"
+		}
+		lines = append(lines, fmt.Sprintf("%d. %s (%s/%s%s)\n%s\n", i+1, r.Title, r.Type, r.Slug, marker, body))
 	}
 	lines = append(lines, "Answer the question using the context above and cite the relevant page(s).")
 

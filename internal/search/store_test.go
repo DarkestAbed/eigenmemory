@@ -320,3 +320,147 @@ func BenchmarkSearch(b *testing.B) {
 		}
 	}
 }
+
+func TestIndexBodyLinks(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	target := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeEntity},
+		Slug:       "auth-service",
+		Body:       "# Auth Service\n",
+		Path:       tmp + "/wiki/entity/auth-service.md",
+	}
+	if err := store.IndexPage(target); err != nil {
+		t.Fatalf("IndexPage target: %v", err)
+	}
+
+	source := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeProject},
+		Slug:       "auth-migration",
+		Body:       "# Auth Migration\n\nDepends on [[auth-service]] and [[auth-service|alias]].\n",
+		Path:       tmp + "/wiki/project/auth-migration.md",
+	}
+	if err := store.IndexPage(source); err != nil {
+		t.Fatalf("IndexPage source: %v", err)
+	}
+	// Body links are recorded as links_to edges; duplicates collapse to one row.
+	if err := store.IndexBodyLinks("auth-migration", []string{"auth-service", "auth-service"}); err != nil {
+		t.Fatalf("IndexBodyLinks: %v", err)
+	}
+
+	count, err := store.CountRelations()
+	if err != nil {
+		t.Fatalf("CountRelations: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("CountRelations = %d, want 1 (deduped links_to)", count)
+	}
+
+	relations, err := store.ListRelations()
+	if err != nil {
+		t.Fatalf("ListRelations: %v", err)
+	}
+	if len(relations) != 1 || relations[0].To != "auth-service" || relations[0].Type != "links_to" || relations[0].Provenance != "body" {
+		t.Errorf("unexpected relation: %+v", relations)
+	}
+
+	// Re-running IndexPage clears all relations for the slug (including
+	// links_to); IndexBodyLinks must then restore them to stay idempotent.
+	if err := store.IndexPage(source); err != nil {
+		t.Fatalf("re-IndexPage: %v", err)
+	}
+	if _, err := store.CountRelations(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.IndexBodyLinks("auth-migration", []string{"auth-service"}); err != nil {
+		t.Fatalf("re-IndexBodyLinks: %v", err)
+	}
+	count, err = store.CountRelations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("CountRelations after re-index = %d, want 1", count)
+	}
+}
+
+func TestSearchWithGraph_ExpandsNeighbors(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	// Seed page that the query will hit via FTS.
+	seed := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeProject},
+		Slug:        "auth-migration",
+		Body:        "# Auth Migration\n\nMigrate the login flow.",
+		Path:        tmp + "/wiki/project/auth-migration.md",
+	}
+	if err := store.IndexPage(seed); err != nil {
+		t.Fatalf("IndexPage seed: %v", err)
+	}
+
+	// Neighbor page with no overlapping FTS terms — only reachable via graph.
+	neighbor := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeEntity},
+		Slug:        "token-vault",
+		Body:        "# Token Vault\n\nStores refresh tokens.",
+		Path:        tmp + "/wiki/entity/token-vault.md",
+	}
+	if err := store.IndexPage(neighbor); err != nil {
+		t.Fatalf("IndexPage neighbor: %v", err)
+	}
+
+	// Edge seed -> neighbor.
+	if err := store.IndexBodyLinks("auth-migration", []string{"token-vault"}); err != nil {
+		t.Fatalf("IndexBodyLinks: %v", err)
+	}
+
+	results, err := store.SearchWithGraph("login flow", 5)
+	if err != nil {
+		t.Fatalf("SearchWithGraph: %v", err)
+	}
+	if len(results) < 2 {
+		t.Fatalf("len(results) = %d, want at least 2 (FTS hit + graph neighbor)", len(results))
+	}
+
+	var ftsSeen, graphSeen bool
+	for _, r := range results {
+		switch r.MatchSource {
+		case "fts":
+			if r.Slug == "auth-migration" {
+				ftsSeen = true
+			}
+		case "graph":
+			if r.Slug == "token-vault" {
+				graphSeen = true
+			}
+		}
+	}
+	if !ftsSeen {
+		t.Errorf("FTS hit auth-migration missing from results: %+v", results)
+	}
+	if !graphSeen {
+		t.Errorf("graph neighbor token-vault missing from results: %+v", results)
+	}
+
+	// The neighbor must not be duplicated as an FTS hit (its body has no
+	// "login flow" terms).
+	for _, r := range results {
+		if r.Slug == "token-vault" && r.MatchSource == "fts" {
+			t.Errorf("token-vault appeared as an FTS hit, should only be graph")
+		}
+	}
+}

@@ -65,7 +65,39 @@ func (s *Store) SavePage(page *types.Page, pageType types.PageType) error {
 	if err := s.Search.IndexPage(page); err != nil {
 		return fmt.Errorf("index page: %w", err)
 	}
+	if err := s.indexBodyLinks(page); err != nil {
+		return fmt.Errorf("index body links: %w", err)
+	}
 	return nil
+}
+
+// indexBodyLinks extracts internal links from a page's body and records them
+// as untyped links_to graph edges. Body links are derived, not authored, so
+// they live only in the search index — the page's frontmatter is never
+// mutated. Must run after IndexPage, which clears the slug's relations before
+// reinserting frontmatter relations.
+func (s *Store) indexBodyLinks(page *types.Page) error {
+	raw := wiki.ExtractLinks(page.Body)
+	if len(raw) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(raw))
+	var slugs []string
+	for _, l := range raw {
+		slug := wiki.LinkToSlug(l)
+		if slug == "" {
+			continue
+		}
+		if _, dup := seen[slug]; dup {
+			continue
+		}
+		seen[slug] = struct{}{}
+		slugs = append(slugs, slug)
+	}
+	if len(slugs) == 0 {
+		return nil
+	}
+	return s.Search.IndexBodyLinks(page.Slug, slugs)
 }
 
 // LoadPage reads a wiki page by type and slug.
@@ -96,6 +128,9 @@ func (s *Store) RebuildIndex() error {
 		}
 		for _, page := range pages {
 			if err := s.Search.IndexPage(page); err != nil {
+				return err
+			}
+			if err := s.indexBodyLinks(page); err != nil {
 				return err
 			}
 		}

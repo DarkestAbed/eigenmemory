@@ -56,12 +56,25 @@ func TestSaveAndLoadPage(t *testing.T) {
 }
 
 func TestExtractLinks(t *testing.T) {
-	body := "See [auth service](entity/auth-service.md) and [concepts](concept/security.md#basics)."
+	body := strings.Join([]string{
+		"See [auth service](entity/auth-service.md) and [concepts](concept/security.md#basics).",
+		"Relates to [[deploy-pipeline]] and [[release-process|Release]] and [[index#section]].",
+		"Inert inline code: `[[nope-inline]]`.",
+		"Inert fenced block:",
+		"```",
+		"[[nope-fenced]]",
+		"```",
+	}, "\n")
 	links := ExtractLinks(body)
 
 	want := map[string]bool{
+		// Markdown links (type-prefixed, heading stripped).
 		"entity/auth-service": true,
 		"concept/security":    true,
+		// Wikilinks (alias and heading stripped, no type prefix here).
+		"deploy-pipeline":  true,
+		"release-process": true,
+		"index":            true,
 	}
 	got := make(map[string]bool)
 	for _, l := range links {
@@ -76,6 +89,25 @@ func TestExtractLinks(t *testing.T) {
 	for k := range got {
 		if !want[k] {
 			t.Errorf("unexpected link %q", k)
+		}
+	}
+}
+
+func TestLinkToSlug(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"entity/auth-service.md", "auth-service"},
+		{"entity/auth-service", "auth-service"},
+		{"auth-service", "auth-service"},
+		{"target|alias", "target"},
+		{"target#heading", "target"},
+		{"concept/security.md#basics", "security"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := LinkToSlug(c.in); got != c.want {
+			t.Errorf("LinkToSlug(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

@@ -12,11 +12,12 @@ The directory `.eigenmemory/` is maintained by the agent. Do not hand-edit files
 
 ## How to use EigenMemory
 
-1. **Recall before answering**: when the user asks about prior decisions, run the MCP tool `wiki_recall` or read the relevant pages from `.eigenmemory/wiki/`.
-2. **Remember after learning**: when you learn a durable fact (decisions, preferences, corrections, external references), store it via `wiki_remember` or by writing the appropriate wiki page.
-3. **Ingest sources**: when the user provides a design doc, article, or transcript, call `wiki_ingest` or run `eigenmemory ingest <path>`.
-4. **Maintain the wiki**: periodically run `eigenmemory lint` and apply fixes.
-5. **Reconcile Claude Code memory**: changes made via `/memory` are proposals. Run `eigenmemory reconcile` to merge them back into the wiki.
+1. **Recall before answering**: when the user asks about prior decisions, run the MCP tool `wiki_recall` or read the relevant pages from `.eigenmemory/wiki/`. `wiki_query`/`wiki_recall` run a full-text search and then expand it by one graph hop, so results include pages reachable via `[[wikilinks]]` and frontmatter `relations` (marked `(graph)`).
+2. **Remember after learning**: when you learn a durable fact (decisions, preferences, corrections, external references), store it via `wiki_remember` or by writing the appropriate wiki page. This is how pages get classified into the typed directories below.
+3. **Ingest sources**: when the user provides a design doc, article, or transcript, call `wiki_ingest` or run `eigenmemory ingest <path>`. Ingest is summary-only by design — it archives an immutable copy in `sources/` plus a digest page; it intentionally does not classify the source into a typed directory. Use `wiki_remember` to extract typed facts from an ingested source.
+4. **Link pages**: write `[[slug]]` wikilinks in page bodies. They are auto-indexed as untyped `links_to` graph edges at index time, so `wiki_query` can traverse them. Links inside code blocks/spans are ignored, so a verbatim source quote never becomes an edge.
+5. **Maintain the wiki**: periodically run `eigenmemory lint` and apply fixes.
+6. **Reconcile Claude Code memory**: changes made via `/memory` are proposals. Run `eigenmemory reconcile` to merge them back into the wiki.
 
 ## Page types
 

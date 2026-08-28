@@ -25,25 +25,9 @@
 </div>
 
 <div align="center">
-<pre>
-$ eigenmemory query "how do we rotate refresh tokens?"
 
-Query: "how do we rotate refresh tokens?"
+<img width="100%" height="100%" alt="Screenshot showing a text-based query example and its output" src="https://github.com/user-attachments/assets/b2dc954c-af7c-4631-9a00-45a837ac44b4" />
 
-1. token-rotation-decision (project/token-rotation-decision)
-   # Token Rotation Decision
-   Rotate refresh tokens on every use; reject reused tokens.
-   → related: auth-service, refresh-token-policy
-
-2. auth-service (entity/auth-service (graph))
-   # Auth Service
-   Handles login and token refresh for the API.
-
-3. refresh-token-policy.md (source/9f2a… (source))
-   # Refresh Token Policy
-   Refresh token rotation MUST invalidate the previous token…
-   Full source: .eigenmemory/sources/9f2a14…
-</pre>
 </div>
 
 EigenMemory keeps a single markdown-based **LLM Wiki** as the canonical memory store, following [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). EigenMemory then builds the wiki and then exposes it to Claude Code, Zed, and any MCP-speaking tool through a local stdio server. Tool-native memory files (Claude Code's `/memory`, Zed's agent memory - ***more to come***) are treated as **projections** of the wiki, not independent sources of truth — so every tool you use reads from and writes to the same knowledge base.

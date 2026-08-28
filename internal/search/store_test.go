@@ -699,3 +699,57 @@ func TestNeighbors_LegacyMdSlugFallback(t *testing.T) {
 		t.Errorf("legacy target-md neighbor not reached via -md fallback; neighbors = %+v", neighbors)
 	}
 }
+
+// TestNeighbors_LegacyMdSlugFallback_ReverseSeed covers the reverse direction:
+// when the seed is itself a legacy "target-md" page, carriers that stored their
+// edge with the bare to_id "target" (from [[target]]) must still be reached.
+func TestNeighbors_LegacyMdSlugFallback_ReverseSeed(t *testing.T) {
+	tmp := t.TempDir()
+	paths := config.PathsFor(tmp)
+
+	store, err := Open(paths)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	legacy := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeSummary},
+		Slug:        "target-md",
+		Body:        "# target-md\n",
+		Path:        tmp + "/wiki/summary/target-md.md",
+	}
+	if err := store.IndexPage(legacy); err != nil {
+		t.Fatalf("IndexPage legacy: %v", err)
+	}
+
+	carrier := &types.Page{
+		Frontmatter: types.Frontmatter{ID: types.NewID(), Type: types.PageTypeProject},
+		Slug:        "carrier",
+		Body:        "# Carrier\n",
+		Path:        tmp + "/wiki/project/carrier.md",
+	}
+	if err := store.IndexPage(carrier); err != nil {
+		t.Fatalf("IndexPage carrier: %v", err)
+	}
+
+	// carrier -> target (bare to_id). Seeding the legacy target-md page must
+	// still surface carrier via the reverse bare-seed lookup.
+	if err := store.IndexBodyLinks("carrier", []string{"target"}); err != nil {
+		t.Fatalf("IndexBodyLinks: %v", err)
+	}
+
+	neighbors, err := store.Neighbors([]string{"target-md"}, 5)
+	if err != nil {
+		t.Fatalf("Neighbors: %v", err)
+	}
+	var found bool
+	for _, n := range neighbors {
+		if n.Slug == "carrier" && n.MatchSource == "graph" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("carrier not reached when seeding legacy target-md; neighbors = %+v", neighbors)
+	}
+}

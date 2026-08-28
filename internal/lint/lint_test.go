@@ -375,3 +375,61 @@ func TestLintLegacyMdSlugFallback(t *testing.T) {
 		}
 	}
 }
+
+// TestLintLegacyMdFallbackRestrictedToSummary verifies the -md fallback applies
+// only to summary pages. A non-summary page intentionally named "foo-md" (e.g.
+// from a title "Foo MD") must NOT make a bare [[foo]] link resolve: [[foo]] is
+// a broken link, and the fallback must not suppress it.
+func TestLintLegacyMdFallbackRestrictedToSummary(t *testing.T) {
+	tmp := t.TempDir()
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("legacy-restricted")); err != nil {
+		t.Fatal(err)
+	}
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	if err := wiki.SaveIndex(store.Paths); err != nil {
+		t.Fatal(err)
+	}
+	// Index links the linker only; the foo-md page is deliberately unlinked.
+	if err := os.WriteFile(store.Paths.IndexFile, []byte("# Index\n\n- [Linker](project/linker.md)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A non-summary page whose slug happens to end in "-md". This is an
+	// intentional name, not a legacy ingest artifact.
+	fooMD := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(types.PageTypeProject),
+		Slug:        "foo-md",
+		Body:        "# foo-md\n\nIntentionally named.\n",
+	}
+	if err := store.SavePage(fooMD, types.PageTypeProject); err != nil {
+		t.Fatal(err)
+	}
+
+	linker := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(types.PageTypeProject),
+		Slug:        "linker",
+		Body:        "# Linker\n\nSee [[foo]].\n",
+	}
+	if err := store.SavePage(linker, types.PageTypeProject); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(store.Paths, store.Search)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var broken bool
+	for _, i := range report.Issues {
+		if i.Category == CategoryBrokenLink && i.Page == "project/linker" {
+			broken = true
+		}
+	}
+	if !broken {
+		t.Errorf("expected broken-link for [[foo]] (fallback must not apply to non-summary foo-md); issues = %v", report.Issues)
+	}
+}

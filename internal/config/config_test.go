@@ -105,6 +105,57 @@ func TestSanitizeClaudeProjectDir(t *testing.T) {
 	}
 }
 
+// TestValidateClaudeProjectDir_AllowsIncidentalDotDot is a regression test:
+// a legitimate project path containing ".." as part of a directory name
+// (not as a path component), e.g. "/work/foo..bar", sanitizes to
+// "-work-foo..bar". That must remain a valid Claude project directory —
+// unlike ValidateProjectName, a ".." substring alone is not a traversal risk
+// here because SanitizeClaudeProjectDir has already collapsed every
+// separator into one path component.
+func TestValidateClaudeProjectDir_AllowsIncidentalDotDot(t *testing.T) {
+	got := SanitizeClaudeProjectDir("/work/foo..bar")
+	if err := ValidateClaudeProjectDir(got); err != nil {
+		t.Errorf("ValidateClaudeProjectDir(%q) = %v, want nil", got, err)
+	}
+}
+
+func TestValidateClaudeProjectDir(t *testing.T) {
+	cases := []struct {
+		dir     string
+		wantErr bool
+	}{
+		{"", false},
+		{"-home-javi-Code-projects-eigenmemory", false},
+		{"-work-foo..bar", false},
+		{".", true},
+		{"..", true},
+		{"foo/bar", true},
+		{"foo\\bar", true},
+	}
+	for _, c := range cases {
+		err := ValidateClaudeProjectDir(c.dir)
+		if (err != nil) != c.wantErr {
+			t.Errorf("ValidateClaudeProjectDir(%q) error = %v, wantErr %v", c.dir, err, c.wantErr)
+		}
+	}
+}
+
+func TestLoadConfig_RejectsMaliciousClaudeProjectDir(t *testing.T) {
+	tmp := t.TempDir()
+	paths := PathsFor(tmp)
+	if err := os.MkdirAll(tmp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	malicious := []byte(`{"name": "proj", "version": "0.1.0", "claudeProjectDir": ".."}`)
+	if err := os.WriteFile(paths.ConfigFile, malicious, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadConfig(paths); err == nil {
+		t.Fatal("expected LoadConfig to reject a malicious claudeProjectDir, got nil error")
+	}
+}
+
 func TestScopeFromCWD_GlobalFallback(t *testing.T) {
 	tmp := t.TempDir()
 	if err := os.Chdir(tmp); err != nil {

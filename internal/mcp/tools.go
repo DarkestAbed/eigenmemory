@@ -377,6 +377,9 @@ func handleWikiReconcile(ctx context.Context, s *Server, args json.RawMessage) (
 	}
 
 	claudeDir := adapters.ResolveClaudeProjectDir(cfg, store.Paths)
+	if claudeDir == "" {
+		return nil, fmt.Errorf("reconcile has no meaning for global-scope memory (no single Claude Code project directory is associated with it); run it from within a project scope instead")
+	}
 
 	actions, err := adapters.Reconcile(store.Paths, claudeDir, params.DryRun)
 	if err != nil {

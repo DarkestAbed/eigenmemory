@@ -32,6 +32,9 @@ func Reconcile(opts ReconcileOptions) error {
 	}
 
 	claudeDir := adapters.ResolveClaudeProjectDir(cfg, store.Paths)
+	if claudeDir == "" {
+		return fmt.Errorf("reconcile has no meaning for global-scope memory (no single Claude Code project directory is associated with it); run it from within a project scope instead")
+	}
 
 	// First, merge any newer Claude Code memory edits back into the wiki.
 	actions, err := adapters.Reconcile(store.Paths, claudeDir, opts.DryRun)

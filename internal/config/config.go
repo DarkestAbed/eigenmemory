@@ -114,6 +114,31 @@ func SanitizeClaudeProjectDir(absPath string) string {
 	return replacer.Replace(absPath)
 }
 
+// ValidateClaudeProjectDir rejects a Claude Code project directory name
+// (see SanitizeClaudeProjectDir) that could escape ~/.claude/projects/<dir>/
+// when joined into a filesystem path. An empty value is allowed; callers
+// that require a non-empty directory check for that separately.
+//
+// Unlike ValidateProjectName, a ".." *substring* is not rejected outright:
+// SanitizeClaudeProjectDir already replaces every path separator with "-",
+// so its output is always a single path component, and a literal ".."
+// inside one segment of the original project path (e.g. a project at
+// "/work/foo..bar" sanitizing to "-work-foo..bar") cannot escape upward the
+// way a raw ".." *component* could. Only "." or ".." as the entire value is
+// rejected.
+func ValidateClaudeProjectDir(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	if strings.ContainsAny(dir, `/\`) {
+		return fmt.Errorf("invalid claude project directory %q: must not contain path separators", dir)
+	}
+	if dir == "." || dir == ".." {
+		return fmt.Errorf("invalid claude project directory %q", dir)
+	}
+	return nil
+}
+
 // LoadConfig reads the project config.json if it exists.
 func LoadConfig(paths *Paths) (Config, error) {
 	data, err := os.ReadFile(paths.ConfigFile)
@@ -132,6 +157,9 @@ func LoadConfig(paths *Paths) (Config, error) {
 	// rather than letting it reach a path Join downstream (e.g. reconcile's
 	// Claude Code memory projection).
 	if err := ValidateProjectName(cfg.Name); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", paths.ConfigFile, err)
+	}
+	if err := ValidateClaudeProjectDir(cfg.ClaudeProjectDir); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", paths.ConfigFile, err)
 	}
 	return cfg, nil

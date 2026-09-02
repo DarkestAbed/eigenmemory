@@ -14,15 +14,38 @@ import (
 )
 
 func TestResolveClaudeProjectDir(t *testing.T) {
-	paths := config.PathsFor(filepath.Join("/some/project/root", config.DirName))
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
 
-	if got := ResolveClaudeProjectDir(config.Config{ClaudeProjectDir: "explicit-dir"}, paths); got != "explicit-dir" {
+	projectPaths := config.PathsFor(filepath.Join(tmp, "some-project", config.DirName))
+
+	if got := ResolveClaudeProjectDir(config.Config{ClaudeProjectDir: "explicit-dir"}, projectPaths); got != "explicit-dir" {
 		t.Errorf("with ClaudeProjectDir set, got %q, want %q", got, "explicit-dir")
 	}
 
-	want := config.SanitizeClaudeProjectDir("/some/project/root")
-	if got := ResolveClaudeProjectDir(config.Config{}, paths); got != want {
-		t.Errorf("fallback: got %q, want %q", got, want)
+	want := config.SanitizeClaudeProjectDir(filepath.Join(tmp, "some-project"))
+	if got := ResolveClaudeProjectDir(config.Config{}, projectPaths); got != want {
+		t.Errorf("project-scope fallback: got %q, want %q", got, want)
+	}
+
+	// Regression: a global-scope config with no ClaudeProjectDir must not
+	// derive one from the home directory — that would reconcile against an
+	// unrelated ~/.claude/projects/<sanitized-home>/memory.
+	globalPaths := config.PathsFor(filepath.Join(tmp, config.GlobalDirName))
+	if got := ResolveClaudeProjectDir(config.Config{}, globalPaths); got != "" {
+		t.Errorf("global-scope fallback = %q, want empty", got)
+	}
+}
+
+// TestClaudeMemoryPath_AllowsIncidentalDotDot is a regression test for the
+// same class of bug ValidateClaudeProjectDir guards against: a project path
+// like "/work/foo..bar" sanitizes to "-work-foo..bar", which must still
+// resolve to a real memory path rather than "" (which ValidateProjectName's
+// blanket ".." rejection previously caused).
+func TestClaudeMemoryPath_AllowsIncidentalDotDot(t *testing.T) {
+	dir := config.SanitizeClaudeProjectDir("/work/foo..bar")
+	if got := ClaudeMemoryPath(dir); got == "" {
+		t.Errorf("ClaudeMemoryPath(%q) = \"\", want a real path", dir)
 	}
 }
 

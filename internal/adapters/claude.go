@@ -29,7 +29,7 @@ func contentHash(body string) string {
 // eigenmemory project name from config.json's Name field, which is a
 // different, human-chosen identifier.
 func ClaudeMemoryPath(claudeProjectDir string) string {
-	if claudeProjectDir == "" || config.ValidateProjectName(claudeProjectDir) != nil {
+	if claudeProjectDir == "" || config.ValidateClaudeProjectDir(claudeProjectDir) != nil {
 		return ""
 	}
 	home, err := os.UserHomeDir()
@@ -42,13 +42,31 @@ func ClaudeMemoryPath(claudeProjectDir string) string {
 // ResolveClaudeProjectDir returns the Claude Code project directory name to
 // use for native memory projection/reconciliation: the value config.json
 // recorded at `eigenmemory init` time, falling back to deriving it from the
-// wiki root's parent directory for configs written before that field
-// existed.
+// wiki root's parent directory for project-scope configs written before
+// that field existed. Global-scope configs have no single Claude Code
+// project directory to associate with — deriving one from the global root's
+// parent (the user's home directory) would scan/project an unrelated
+// ~/.claude/projects/<sanitized-home>/memory, so this returns "" for the
+// global root instead of guessing; callers should treat "" as "reconcile
+// does not apply here" rather than passing it on to ClaudeMemoryPath.
 func ResolveClaudeProjectDir(cfg config.Config, paths *config.Paths) string {
 	if cfg.ClaudeProjectDir != "" {
 		return cfg.ClaudeProjectDir
 	}
+	if isGlobalRoot(paths.Root) {
+		return ""
+	}
 	return config.SanitizeClaudeProjectDir(filepath.Dir(paths.Root))
+}
+
+// isGlobalRoot reports whether root is the global EigenMemory root
+// (~/.eigenmemory), as opposed to a project-scoped .eigenmemory directory.
+func isGlobalRoot(root string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(root) == filepath.Clean(filepath.Join(home, config.GlobalDirName))
 }
 
 // ProjectMemoryProjection generates Claude Code memory files from the EigenMemory wiki.

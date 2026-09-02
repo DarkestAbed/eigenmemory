@@ -294,6 +294,53 @@ func TestReconcile_ImportsNewNativeMemory(t *testing.T) {
 	}
 }
 
+// TestReconcile_ImportsNativeMemoryWithQuotedFrontmatter is a regression test:
+// YAML allows a scalar to be quoted (e.g. name: "release-workflow"), and the
+// lightweight line-based frontmatter scanner doesn't strip that, so a quoted
+// name or metadata.type must still be recognized rather than silently
+// skipped because the literal quote characters failed slug validation or
+// type recognition.
+func TestReconcile_ImportsNativeMemoryWithQuotedFrontmatter(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("testproj")); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	memDir := ClaudeMemoryPath("testproj")
+	if err := os.MkdirAll(memDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	native := "---\nname: \"release-workflow\"\ndescription: \"How to ship a release\"\nmetadata:\n  type: \"feedback\"\n---\n\nQuoted frontmatter content.\n"
+	memPath := filepath.Join(memDir, "release-workflow.md")
+	if err := os.WriteFile(memPath, []byte(native), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	actions, err := Reconcile(store.Paths, "testproj", false)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	found := false
+	for _, a := range actions {
+		if strings.Contains(a, "create feedback/release-workflow") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a create action despite quoted frontmatter, got: %v", actions)
+	}
+	if !wiki.PageExists(store.Paths, types.PageTypeFeedback, "release-workflow") {
+		t.Error("expected wiki page to be created with the unquoted slug")
+	}
+}
+
 // TestReconcile_SkipsNativeMemoryWithUnrecognizedType covers a native memory
 // file whose metadata.type isn't one of the four values Claude Code's
 // auto-memory feature actually uses: it must be skipped, never guessed.

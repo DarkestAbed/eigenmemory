@@ -246,9 +246,14 @@ func parseMemoryFile(path string, modTime time.Time) (MemoryFile, error) {
 				// Not one of our own projections: fall back to Claude Code's
 				// native auto-memory frontmatter (name / metadata.type), so
 				// genuinely new native memories are recognized instead of
-				// silently skipped.
-				if name := extractFrontmatterValue(front, "name"); name != "" {
-					if pt, ok := nativeTypeToPageType(extractFrontmatterValue(front, "type")); ok {
+				// silently skipped. YAML allows a scalar to be quoted (e.g.
+				// name: "release-workflow"); the lightweight extractor above
+				// doesn't strip that, so trim matching quote characters here
+				// or a quoted name/type would fail slug validation / type
+				// recognition below and get silently skipped instead.
+				name := unquote(extractFrontmatterValue(front, "name"))
+				if name != "" {
+					if pt, ok := nativeTypeToPageType(unquote(extractFrontmatterValue(front, "type"))); ok {
 						mf.Slug = name
 						mf.PageType = pt
 					}
@@ -260,6 +265,18 @@ func parseMemoryFile(path string, modTime time.Time) (MemoryFile, error) {
 	}
 
 	return mf, nil
+}
+
+// unquote strips a single matching pair of leading/trailing double or single
+// quotes from a YAML scalar value extracted by the line-based scanner above,
+// which (unlike a real YAML parser) doesn't do this itself.
+func unquote(s string) string {
+	if len(s) >= 2 {
+		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
 }
 
 func extractFrontmatterValue(front, key string) string {

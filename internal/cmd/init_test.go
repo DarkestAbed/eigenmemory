@@ -34,6 +34,41 @@ func TestInit_CreatesStructure(t *testing.T) {
 	}
 }
 
+func TestInit_SetsClaudeProjectDirForProjectScope(t *testing.T) {
+	tmp := t.TempDir()
+	root := filepath.Join(tmp, ".eigenmemory")
+
+	if err := Init(InitOptions{ProjectName: "test-project", Scope: config.ScopeProject, Root: root}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	cfg, err := config.LoadConfig(config.PathsFor(root))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	want := config.SanitizeClaudeProjectDir(tmp)
+	if cfg.ClaudeProjectDir != want {
+		t.Errorf("ClaudeProjectDir = %q, want %q", cfg.ClaudeProjectDir, want)
+	}
+}
+
+func TestInit_LeavesClaudeProjectDirEmptyForGlobalScope(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	if err := Init(InitOptions{ProjectName: "globalproj", Scope: config.ScopeGlobal}); err != nil {
+		t.Fatalf("Init (global): %v", err)
+	}
+
+	cfg, err := config.LoadConfig(config.PathsFor(filepath.Join(tmp, config.GlobalDirName)))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.ClaudeProjectDir != "" {
+		t.Errorf("ClaudeProjectDir = %q, want empty for global scope", cfg.ClaudeProjectDir)
+	}
+}
+
 func TestInit_InvalidProjectName(t *testing.T) {
 	tmp := t.TempDir()
 	if err := Init(InitOptions{

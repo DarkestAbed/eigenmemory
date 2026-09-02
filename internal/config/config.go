@@ -33,6 +33,16 @@ type Config struct {
 	Name      string `json:"name"`
 	Version   string `json:"version"`
 	CreatedAt string `json:"createdAt"`
+	// ClaudeProjectDir is the sanitized directory name Claude Code uses under
+	// ~/.claude/projects/ for this project's native memory — derived from the
+	// project's absolute path at `eigenmemory init` time, NOT the same as
+	// Name above (Claude Code keys its memory directories by working-directory
+	// path, not by any human-chosen project name). Empty for global-scope
+	// configs, and for project configs written before this field existed;
+	// callers should fall back to config.SanitizeClaudeProjectDir on the
+	// project root's parent directory in that case (see
+	// adapters.ResolveClaudeProjectDir).
+	ClaudeProjectDir string `json:"claudeProjectDir,omitempty"`
 }
 
 // Paths holds all filesystem paths for a given scope.
@@ -91,6 +101,17 @@ func ValidateProjectName(name string) error {
 		return fmt.Errorf("invalid project name %q: must not contain path separators or \"..\"", name)
 	}
 	return nil
+}
+
+// SanitizeClaudeProjectDir reproduces Claude Code's own scheme for naming a
+// project's directory under ~/.claude/projects/: every path separator in the
+// absolute project path is replaced with "-" (e.g. "/home/j/proj" becomes
+// "-home-j-proj"). Verified against Claude Code's actual on-disk directory
+// naming on Unix; unconfirmed on Windows, where the drive letter's ":" is
+// left untouched.
+func SanitizeClaudeProjectDir(absPath string) string {
+	replacer := strings.NewReplacer("/", "-", `\`, "-")
+	return replacer.Replace(absPath)
 }
 
 // LoadConfig reads the project config.json if it exists.

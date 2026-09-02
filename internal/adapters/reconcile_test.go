@@ -13,6 +13,19 @@ import (
 	"github.com/DarkestAbed/eigenmemory/internal/wiki"
 )
 
+func TestResolveClaudeProjectDir(t *testing.T) {
+	paths := config.PathsFor(filepath.Join("/some/project/root", config.DirName))
+
+	if got := ResolveClaudeProjectDir(config.Config{ClaudeProjectDir: "explicit-dir"}, paths); got != "explicit-dir" {
+		t.Errorf("with ClaudeProjectDir set, got %q, want %q", got, "explicit-dir")
+	}
+
+	want := config.SanitizeClaudeProjectDir("/some/project/root")
+	if got := ResolveClaudeProjectDir(config.Config{}, paths); got != want {
+		t.Errorf("fallback: got %q, want %q", got, want)
+	}
+}
+
 func TestReconcileOnlyUpdatesChangedFiles(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
@@ -186,6 +199,153 @@ func TestReconcile_ConflictFallsBackToMtimeMargin(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected a conflict-resolved-by-mtime action, got: %v", actions)
+	}
+}
+
+// TestReconcile_ImportsNewNativeMemory covers Claude Code's own auto-memory
+// feature writing a file directly (name/description/metadata.type
+// frontmatter, no eigenmemory_* fields at all) with no corresponding wiki
+// page yet: reconcile must adopt it into the wiki rather than silently
+// skipping it as "no eigenmemory metadata".
+func TestReconcile_ImportsNewNativeMemory(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("testproj")); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	memDir := ClaudeMemoryPath("testproj")
+	if err := os.MkdirAll(memDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	native := "---\nname: release-workflow\ndescription: \"How to ship a release\"\nmetadata:\n  node_type: memory\n  type: feedback\n  originSessionId: abc123\n  modified: 2026-08-28T22:03:57.741Z\n---\n\nThe release flow is PR, merge, tag, push.\n"
+	memPath := filepath.Join(memDir, "release-workflow.md")
+	if err := os.WriteFile(memPath, []byte(native), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dry run must report the proposed creation without writing anything.
+	dryActions, err := Reconcile(store.Paths, "testproj", true)
+	if err != nil {
+		t.Fatalf("Reconcile (dry run): %v", err)
+	}
+	if wiki.PageExists(store.Paths, types.PageTypeFeedback, "release-workflow") {
+		t.Fatal("dry run must not create the wiki page")
+	}
+	foundProposal := false
+	for _, a := range dryActions {
+		if strings.Contains(a, "would create feedback/release-workflow") {
+			foundProposal = true
+		}
+	}
+	if !foundProposal {
+		t.Errorf("expected a 'would create' proposal, got: %v", dryActions)
+	}
+
+	actions, err := Reconcile(store.Paths, "testproj", false)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	found := false
+	for _, a := range actions {
+		if strings.Contains(a, "create feedback/release-workflow") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a create action, got: %v", actions)
+	}
+
+	page, err := wiki.LoadPage(store.Paths, types.PageTypeFeedback, "release-workflow")
+	if err != nil {
+		t.Fatalf("expected wiki page to be created: %v", err)
+	}
+	if !strings.Contains(page.Body, "PR, merge, tag, push") {
+		t.Errorf("page body = %q, want native memory content", page.Body)
+	}
+}
+
+// TestReconcile_SkipsNativeMemoryWithUnrecognizedType covers a native memory
+// file whose metadata.type isn't one of the four values Claude Code's
+// auto-memory feature actually uses: it must be skipped, never guessed.
+func TestReconcile_SkipsNativeMemoryWithUnrecognizedType(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("testproj")); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	memDir := ClaudeMemoryPath("testproj")
+	if err := os.MkdirAll(memDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	native := "---\nname: some-fact\nmetadata:\n  type: mystery\n---\n\nUnclassifiable content.\n"
+	memPath := filepath.Join(memDir, "some-fact.md")
+	if err := os.WriteFile(memPath, []byte(native), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	actions, err := Reconcile(store.Paths, "testproj", true)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	for _, a := range actions {
+		if strings.Contains(a, "create") {
+			t.Errorf("expected no create action for an unrecognized type, got: %v", actions)
+		}
+	}
+}
+
+// TestReconcile_SkipsInvalidNativeSlug covers a native memory file whose name
+// isn't a valid wiki slug: it must be skipped with a diagnostic rather than
+// aborting the whole reconcile batch.
+func TestReconcile_SkipsInvalidNativeSlug(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	if err := config.SaveConfig(config.PathsFor(tmp), config.Default("testproj")); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := core.OpenAt(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	memDir := ClaudeMemoryPath("testproj")
+	if err := os.MkdirAll(memDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	native := "---\nname: ../../etc/passwd\nmetadata:\n  type: project\n---\n\nMalicious slug attempt.\n"
+	memPath := filepath.Join(memDir, "bad-slug.md")
+	if err := os.WriteFile(memPath, []byte(native), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	actions, err := Reconcile(store.Paths, "testproj", false)
+	if err != nil {
+		t.Fatalf("Reconcile must not abort the batch on an invalid slug: %v", err)
+	}
+	found := false
+	for _, a := range actions {
+		if strings.Contains(a, "invalid slug") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected an invalid-slug skip action, got: %v", actions)
 	}
 }
 

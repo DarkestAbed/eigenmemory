@@ -23,21 +23,37 @@ func contentHash(body string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ClaudeMemoryPath returns the Claude Code native memory directory for a project.
-func ClaudeMemoryPath(projectName string) string {
-	if projectName == "" || config.ValidateProjectName(projectName) != nil {
+// ClaudeMemoryPath returns the Claude Code native memory directory for a
+// project, given its sanitized Claude Code project directory name (see
+// config.SanitizeClaudeProjectDir / ResolveClaudeProjectDir) — NOT the
+// eigenmemory project name from config.json's Name field, which is a
+// different, human-chosen identifier.
+func ClaudeMemoryPath(claudeProjectDir string) string {
+	if claudeProjectDir == "" || config.ValidateProjectName(claudeProjectDir) != nil {
 		return ""
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".claude", "projects", projectName, "memory")
+	return filepath.Join(home, ".claude", "projects", claudeProjectDir, "memory")
+}
+
+// ResolveClaudeProjectDir returns the Claude Code project directory name to
+// use for native memory projection/reconciliation: the value config.json
+// recorded at `eigenmemory init` time, falling back to deriving it from the
+// wiki root's parent directory for configs written before that field
+// existed.
+func ResolveClaudeProjectDir(cfg config.Config, paths *config.Paths) string {
+	if cfg.ClaudeProjectDir != "" {
+		return cfg.ClaudeProjectDir
+	}
+	return config.SanitizeClaudeProjectDir(filepath.Dir(paths.Root))
 }
 
 // ProjectMemoryProjection generates Claude Code memory files from the EigenMemory wiki.
-func ProjectMemoryProjection(paths *config.Paths, projectName string) error {
-	memDir := ClaudeMemoryPath(projectName)
+func ProjectMemoryProjection(paths *config.Paths, claudeProjectDir string) error {
+	memDir := ClaudeMemoryPath(claudeProjectDir)
 	if memDir == "" {
 		return fmt.Errorf("cannot determine Claude memory path")
 	}

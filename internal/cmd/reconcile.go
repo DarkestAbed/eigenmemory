@@ -31,8 +31,10 @@ func Reconcile(opts ReconcileOptions) error {
 		return fmt.Errorf("project name not set; run `eigenmemory init`")
 	}
 
+	claudeDir := adapters.ResolveClaudeProjectDir(cfg, store.Paths)
+
 	// First, merge any newer Claude Code memory edits back into the wiki.
-	actions, err := adapters.Reconcile(store.Paths, cfg.Name, opts.DryRun)
+	actions, err := adapters.Reconcile(store.Paths, claudeDir, opts.DryRun)
 	if err != nil {
 		return fmt.Errorf("reconcile memory files: %w", err)
 	}
@@ -48,7 +50,7 @@ func Reconcile(opts ReconcileOptions) error {
 
 	if !opts.DryRun {
 		// Regenerate the projection from the (now updated) wiki.
-		if err := adapters.ProjectMemoryProjection(store.Paths, cfg.Name); err != nil {
+		if err := adapters.ProjectMemoryProjection(store.Paths, claudeDir); err != nil {
 			return fmt.Errorf("project memory: %w", err)
 		}
 		if err := store.SaveIndex(); err != nil {

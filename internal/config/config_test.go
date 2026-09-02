@@ -90,6 +90,21 @@ func TestLoadConfig_RejectsMaliciousProjectName(t *testing.T) {
 	}
 }
 
+func TestSanitizeClaudeProjectDir(t *testing.T) {
+	cases := []struct {
+		abs  string
+		want string
+	}{
+		{"/home/javi/Code/projects/eigenmemory", "-home-javi-Code-projects-eigenmemory"},
+		{"/tmp/x", "-tmp-x"},
+	}
+	for _, c := range cases {
+		if got := SanitizeClaudeProjectDir(c.abs); got != c.want {
+			t.Errorf("SanitizeClaudeProjectDir(%q) = %q, want %q", c.abs, got, c.want)
+		}
+	}
+}
+
 func TestScopeFromCWD_GlobalFallback(t *testing.T) {
 	tmp := t.TempDir()
 	if err := os.Chdir(tmp); err != nil {

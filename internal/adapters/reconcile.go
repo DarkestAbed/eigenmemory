@@ -28,6 +28,12 @@ type MemoryFile struct {
 	// last projected from the wiki (eigenmemory_hash frontmatter). Empty for
 	// memory files written before this field existed.
 	Hash string
+	// Managed is true when the file carries eigenmemory provenance fields,
+	// i.e. it was previously written by ProjectMemoryProjection. false means
+	// it was written by Claude Code's own native auto-memory feature and has
+	// never been reconciled into the wiki before (Slug/PageType, if set, come
+	// from that native name/metadata.type frontmatter instead).
+	Managed bool
 }
 
 // reconcileConflictMargin is how much newer a memory file's mtime must be
@@ -37,9 +43,10 @@ type MemoryFile struct {
 // filesystem mtime and a YAML timestamp.
 const reconcileConflictMargin = 2 * time.Second
 
-// ScanClaudeMemory reads all memory files in the Claude Code memory directory.
-func ScanClaudeMemory(projectName string) ([]MemoryFile, error) {
-	memDir := ClaudeMemoryPath(projectName)
+// ScanClaudeMemory reads all memory files in the Claude Code memory
+// directory identified by claudeProjectDir (see ClaudeMemoryPath).
+func ScanClaudeMemory(claudeProjectDir string) ([]MemoryFile, error) {
+	memDir := ClaudeMemoryPath(claudeProjectDir)
 	entries, err := os.ReadDir(memDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -71,9 +78,12 @@ func ScanClaudeMemory(projectName string) ([]MemoryFile, error) {
 	return files, nil
 }
 
-// Reconcile merges newer or novel Claude Code memory edits back into the EigenMemory wiki.
-func Reconcile(paths *config.Paths, projectName string, dryRun bool) ([]string, error) {
-	files, err := ScanClaudeMemory(projectName)
+// Reconcile merges newer or novel Claude Code memory edits back into the
+// EigenMemory wiki. claudeProjectDir identifies the Claude Code memory
+// directory (see ClaudeMemoryPath / config.ResolveClaudeProjectDir) — it is
+// not the eigenmemory project name.
+func Reconcile(paths *config.Paths, claudeProjectDir string, dryRun bool) ([]string, error) {
+	files, err := ScanClaudeMemory(claudeProjectDir)
 	if err != nil {
 		return nil, err
 	}
@@ -84,15 +94,26 @@ func Reconcile(paths *config.Paths, projectName string, dryRun bool) ([]string, 
 			continue // Index file, not a source of truth.
 		}
 		if mf.Slug == "" {
-			actions = append(actions, fmt.Sprintf("skip %s (no eigenmemory metadata)", mf.Filename))
+			actions = append(actions, fmt.Sprintf("skip %s (no recognizable memory metadata)", mf.Filename))
 			continue
 		}
 
 		exists := wiki.PageExists(paths, mf.PageType, mf.Slug)
 		if !exists {
-			// Memory file references a wiki page that no longer exists. Treat as a
-			// proposed restoration only in non-dry-run mode; we do not auto-delete wiki pages.
-			actions = append(actions, fmt.Sprintf("missing wiki page for %s/%s (manual review needed)", mf.PageType, mf.Slug))
+			if mf.Managed {
+				// Previously projected by us, and the wiki page was since removed:
+				// never resurrect it without explicit human review.
+				actions = append(actions, fmt.Sprintf("missing wiki page for %s/%s (manual review needed)", mf.PageType, mf.Slug))
+				continue
+			}
+			// A genuinely new native memory Claude Code's own auto-memory feature
+			// wrote on its own: adopt it into the wiki instead of leaving it
+			// stranded outside eigenmemory's canonical store.
+			action, err := importNativeMemory(paths, mf, dryRun)
+			if err != nil {
+				return nil, err
+			}
+			actions = append(actions, action)
 			continue
 		}
 
@@ -152,6 +173,46 @@ func Reconcile(paths *config.Paths, projectName string, dryRun bool) ([]string, 
 	return actions, nil
 }
 
+// importNativeMemory creates a new wiki page from a memory file that Claude
+// Code's own auto-memory feature wrote independently of eigenmemory. A
+// malformed slug is reported and skipped rather than aborting the whole
+// reconcile batch, since memory file content can originate from
+// unsanitized agent output (the same class of risk the slug path-traversal
+// fix addressed elsewhere).
+func importNativeMemory(paths *config.Paths, mf MemoryFile, dryRun bool) (string, error) {
+	if err := wiki.ValidateSlug(mf.Slug); err != nil {
+		return fmt.Sprintf("skip %s (invalid slug %q: %v)", mf.Filename, mf.Slug, err), nil
+	}
+	if dryRun {
+		return fmt.Sprintf("would create %s/%s from %s (new native memory)", mf.PageType, mf.Slug, mf.Filename), nil
+	}
+
+	page := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(mf.PageType),
+		Slug:        mf.Slug,
+		Body:        mf.Body,
+	}
+	page.Frontmatter.Tags = mf.Tags
+	page.Frontmatter.Sources = mf.Sources
+	if err := wiki.SavePage(paths, page, mf.PageType); err != nil {
+		return "", fmt.Errorf("create wiki page from %s: %w", mf.Filename, err)
+	}
+	return fmt.Sprintf("create %s/%s from %s (new native memory)", mf.PageType, mf.Slug, mf.Filename), nil
+}
+
+// nativeTypeToPageType maps Claude Code's native auto-memory metadata.type
+// (the four values its own memory-writing convention uses) onto the wiki's
+// PageType. An unrecognized or empty value returns ok=false so callers skip
+// rather than guess.
+func nativeTypeToPageType(t string) (types.PageType, bool) {
+	switch types.PageType(t) {
+	case types.PageTypeUser, types.PageTypeFeedback, types.PageTypeProject, types.PageTypeReference:
+		return types.PageType(t), true
+	default:
+		return "", false
+	}
+}
+
 // parseMemoryFile parses a single Claude Code memory markdown file.
 func parseMemoryFile(path string, modTime time.Time) (MemoryFile, error) {
 	data, err := os.ReadFile(path)
@@ -179,12 +240,43 @@ func parseMemoryFile(path string, modTime time.Time) (MemoryFile, error) {
 			mf.Tags = parseListValue(extractFrontmatterValue(front, "tags"))
 			mf.Sources = parseListValue(extractFrontmatterValue(front, "sources"))
 			mf.Body = wiki.StripFooters(strings.TrimSpace(body))
+			mf.Managed = mf.ID != "" || mf.Slug != ""
+
+			if !mf.Managed {
+				// Not one of our own projections: fall back to Claude Code's
+				// native auto-memory frontmatter (name / metadata.type), so
+				// genuinely new native memories are recognized instead of
+				// silently skipped. YAML allows a scalar to be quoted (e.g.
+				// name: "release-workflow"); the lightweight extractor above
+				// doesn't strip that, so trim matching quote characters here
+				// or a quoted name/type would fail slug validation / type
+				// recognition below and get silently skipped instead.
+				name := unquote(extractFrontmatterValue(front, "name"))
+				if name != "" {
+					if pt, ok := nativeTypeToPageType(unquote(extractFrontmatterValue(front, "type"))); ok {
+						mf.Slug = name
+						mf.PageType = pt
+					}
+				}
+			}
 		}
 	} else {
 		mf.Body = strings.TrimSpace(content)
 	}
 
 	return mf, nil
+}
+
+// unquote strips a single matching pair of leading/trailing double or single
+// quotes from a YAML scalar value extracted by the line-based scanner above,
+// which (unlike a real YAML parser) doesn't do this itself.
+func unquote(s string) string {
+	if len(s) >= 2 {
+		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
 }
 
 func extractFrontmatterValue(front, key string) string {

@@ -78,9 +78,13 @@ func Init(opts InitOptions) error {
 	}
 	defer func() { _ = store.Close() }()
 
-	// Write config.json.
+	// Write config.json. ClaudeProjectDir only makes sense tied to a single
+	// project's working directory, so it's left empty for global scope.
 	cfg := config.Default(opts.ProjectName)
 	cfg.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	if opts.Scope == config.ScopeProject {
+		cfg.ClaudeProjectDir = config.SanitizeClaudeProjectDir(filepath.Dir(root))
+	}
 	if err := config.SaveConfig(paths, cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}

@@ -81,6 +81,8 @@ func ProjectMemoryProjection(paths *config.Paths, claudeProjectDir string) error
 
 	// Map all wiki pages into memory files.
 	var memoryFiles []string
+	written := make(map[string]bool)
+	projected := make(map[string]bool) // "pageType/slug" for every page projected this run
 	for _, pageType := range types.ValidPageTypes() {
 		pages, err := wiki.ListPages(paths, pageType)
 		if err != nil {
@@ -96,7 +98,13 @@ func ProjectMemoryProjection(paths *config.Paths, claudeProjectDir string) error
 				return fmt.Errorf("write memory file %s: %w", filename, err)
 			}
 			memoryFiles = append(memoryFiles, filename)
+			written[filename] = true
+			projected[string(pageType)+"/"+page.Slug] = true
 		}
+	}
+
+	if err := removeStaleProjections(memDir, written, projected); err != nil {
+		return err
 	}
 
 	// Generate MEMORY.md index.
@@ -113,6 +121,53 @@ func ProjectMemoryProjection(paths *config.Paths, claudeProjectDir string) error
 		return fmt.Errorf("write MEMORY.md: %w", err)
 	}
 
+	return nil
+}
+
+// removeStaleProjections deletes managed memory files left behind by a
+// filename-scheme change (e.g. memoryFilename's entity/concept/summary
+// disambiguation): a managed file not written this run whose (pageType,
+// slug) IS covered by a file that was just written is a duplicate
+// projection of a page now filed under a different name — pure derived
+// state, safe to delete. A managed file whose page isn't in projected at
+// all is left untouched: that's the "wiki page no longer exists" case
+// Reconcile already flags for manual review, not something to silently
+// erase here. Unmanaged files (never projected by us) are never touched.
+//
+// Any edits a stale duplicate carried are expected to have already been
+// folded into the wiki by a preceding Reconcile call — every caller of
+// ProjectMemoryProjection in this codebase runs Reconcile first — so by the
+// time this runs, deleting the duplicate loses no in-flight edits.
+func removeStaleProjections(memDir string, written, projected map[string]bool) error {
+	entries, err := os.ReadDir(memDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read claude memory dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || name == "MEMORY.md" || !strings.HasSuffix(name, ".md") || written[name] {
+			continue
+		}
+		path := filepath.Join(memDir, name)
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		mf, err := parseMemoryFile(path, info.ModTime())
+		if err != nil {
+			return fmt.Errorf("parse memory file %s: %w", name, err)
+		}
+		if !mf.Managed || !projected[string(mf.PageType)+"/"+mf.Slug] {
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove stale projection %s: %w", name, err)
+		}
+	}
 	return nil
 }
 

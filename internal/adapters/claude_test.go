@@ -68,3 +68,93 @@ func TestProjectMemoryProjection_NoCollisionAcrossPageTypes(t *testing.T) {
 		}
 	}
 }
+
+// TestProjectMemoryProjection_RemovesStaleLegacyDuplicate covers the gap
+// Sourcery flagged in the fix above: disambiguating filenames going forward
+// does nothing for an existing memory directory that already has the page
+// projected under the old, collapsed filename. Without cleanup, that stale
+// duplicate keeps getting reconciled as if it were an independent memory
+// file, and can overwrite the canonical wiki page with outdated content.
+func TestProjectMemoryProjection_RemovesStaleLegacyDuplicate(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	store, err := core.OpenAt(filepath.Join(tmp, "proj", ".eigenmemory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	page := &types.Page{
+		Frontmatter: types.DefaultFrontmatter(types.PageTypeEntity),
+		Slug:        "auth",
+		Body:        "# entity\n\nEntity page content.",
+	}
+	if err := store.SavePage(page, types.PageTypeEntity); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadPage(types.PageTypeEntity, "auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	memDir := ClaudeMemoryPath("migrateproj")
+	if err := os.MkdirAll(memDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a pre-fix projection: memoryFilename now routes an entity
+	// page to "project_entity_<slug>.md", never the collapsed
+	// "project_<slug>.md" a prior version of this projection would have
+	// written.
+	legacyPath := filepath.Join(memDir, "project_auth.md")
+	if err := os.WriteFile(legacyPath, []byte(renderMemoryPage(loaded, types.PageTypeEntity)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ProjectMemoryProjection(store.Paths, "migrateproj"); err != nil {
+		t.Fatalf("project memory: %v", err)
+	}
+
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Errorf("expected stale legacy projection %s to be removed after re-projecting under its new name, stat err = %v", legacyPath, err)
+	}
+	newPath := filepath.Join(memDir, memoryFilename(types.PageTypeEntity, "auth"))
+	if _, err := os.Stat(newPath); err != nil {
+		t.Errorf("expected new disambiguated projection to exist: %v", err)
+	}
+}
+
+// TestProjectMemoryProjection_KeepsOrphanedManagedFileForManualReview makes
+// sure the new cleanup step doesn't overreach: a managed memory file whose
+// wiki page has genuinely been deleted (not renamed to a new filename) must
+// stay untouched, since that's the "missing wiki page, needs manual review"
+// case Reconcile already flags — silently deleting it here would erase the
+// evidence Reconcile relies on to raise that flag.
+func TestProjectMemoryProjection_KeepsOrphanedManagedFileForManualReview(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	store, err := core.OpenAt(filepath.Join(tmp, "proj", ".eigenmemory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	memDir := ClaudeMemoryPath("orphanproj")
+	if err := os.MkdirAll(memDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	orphanPath := filepath.Join(memDir, "project_gone.md")
+	orphanContent := "---\neigenmemory_id: abc123\neigenmemory_type: project\neigenmemory_slug: gone\neigenmemory_updated: 2026-01-01T00:00:00Z\n---\n\nA page that no longer exists in the wiki.\n"
+	if err := os.WriteFile(orphanPath, []byte(orphanContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ProjectMemoryProjection(store.Paths, "orphanproj"); err != nil {
+		t.Fatalf("project memory: %v", err)
+	}
+
+	if _, err := os.Stat(orphanPath); err != nil {
+		t.Errorf("expected orphaned managed file (page deleted from wiki, not renamed) to be left alone for manual review, got removed: %v", err)
+	}
+}

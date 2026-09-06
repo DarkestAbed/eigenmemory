@@ -30,7 +30,7 @@
 
 </div>
 
-EigenMemory keeps a single markdown-based **LLM Wiki** as the canonical memory store, following [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). EigenMemory then builds the wiki and then exposes it to Claude Code, Zed, and any MCP-speaking tool through a local stdio server. Tool-native memory files (Claude Code's `/memory`, Zed's agent memory - ***more to come***) are treated as **projections** of the wiki, not independent sources of truth — so every tool you use reads from and writes to the same knowledge base.
+EigenMemory keeps a single markdown-based **LLM Wiki** as the canonical memory store, following [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). EigenMemory then builds the wiki and exposes it to Claude Code, Zed, Codex CLI, Antigravity, and any MCP-speaking tool through a local stdio server. Tool-native memory files (Claude Code's `/memory` today; more to come) are treated as **projections** of the wiki, not independent sources of truth — so every tool you use reads from and writes to the same knowledge base. See [`HOWTO.md`](./HOWTO.md) for setup instructions across every major harness.
 
 Use it when you want an agent to remember decisions across sessions, recall why a system was built a certain way, or stop re-asking questions you already answered last week. It runs locally, stores everything in plain markdown you can read and edit, and indexes it into SQLite FTS5 for fast keyword and graph-like search.
 
@@ -140,16 +140,45 @@ Add to `~/.config/zed/settings.json`:
 {
   "context_servers": {
     "eigenmemory": {
-      "command": {
-        "path": "eigenmemory",
-        "args": ["serve", "--mcp"]
-      }
+      "command": "eigenmemory",
+      "args": ["serve", "--mcp"]
     }
   }
 }
 ```
 
 Or generate the snippet with `eigenmemory setup --tool zed`.
+
+### Connect to Codex CLI
+
+Add to `~/.codex/config.toml` (or a project's `.codex/config.toml` for a trusted project):
+
+```toml
+[mcp_servers.eigenmemory]
+command = "eigenmemory"
+args = ["serve", "--mcp"]
+```
+
+Or generate the snippet with `eigenmemory setup --tool codex`. Codex CLI already reads the `AGENTS.md` that `eigenmemory init` generates, so no extra instruction wiring is needed.
+
+### Connect to Antigravity
+
+Add to `~/.gemini/config/mcp_config.json` (or the workspace-local `.agents/mcp_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "eigenmemory": {
+      "command": "eigenmemory",
+      "args": ["serve", "--mcp"]
+    }
+  }
+}
+```
+
+Or generate the snippet with `eigenmemory setup --tool antigravity`. Antigravity also reads `AGENTS.md` (global `~/.gemini/AGENTS.md` plus the project root), so `eigenmemory init`'s generated file applies here too.
+
+For Cursor, Windsurf, Cline, Continue.dev, Gemini CLI, GitHub Copilot, and other MCP clients, see [`HOWTO.md`](./HOWTO.md).
 
 ## Usage
 
@@ -164,6 +193,8 @@ Or generate the snippet with `eigenmemory setup --tool zed`.
 - `eigenmemory query "..."` — natural-language recall with citations. Full-text hits are expanded by one graph hop over `[[wikilinks]]` and frontmatter `relations`, so related pages surface even without matching the query terms.
 - `eigenmemory setup --tool claude` — print `.mcp.json` snippet for Claude Code.
 - `eigenmemory setup --tool zed` — print `settings.json` snippet for Zed.
+- `eigenmemory setup --tool codex` — print `config.toml` snippet for Codex CLI.
+- `eigenmemory setup --tool antigravity` — print `mcp_config.json` snippet for Antigravity.
 
 ## MCP tools
 

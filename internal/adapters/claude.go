@@ -81,23 +81,30 @@ func ProjectMemoryProjection(paths *config.Paths, claudeProjectDir string) error
 
 	// Map all wiki pages into memory files.
 	var memoryFiles []string
+	written := make(map[string]bool)
+	projected := make(map[string]bool) // "pageType/slug" for every page projected this run
 	for _, pageType := range types.ValidPageTypes() {
 		pages, err := wiki.ListPages(paths, pageType)
 		if err != nil {
 			return err
 		}
 		for _, page := range pages {
-			prefix := memoryPrefix(pageType)
-			if prefix == "" {
+			filename := memoryFilename(pageType, page.Slug)
+			if filename == "" {
 				continue
 			}
-			filename := fmt.Sprintf("%s_%s.md", prefix, page.Slug)
 			content := renderMemoryPage(page, pageType)
 			if err := writeFileAtomic(filepath.Join(memDir, filename), []byte(content)); err != nil {
 				return fmt.Errorf("write memory file %s: %w", filename, err)
 			}
 			memoryFiles = append(memoryFiles, filename)
+			written[filename] = true
+			projected[string(pageType)+"/"+page.Slug] = true
 		}
+	}
+
+	if err := removeStaleProjections(memDir, written, projected); err != nil {
+		return err
 	}
 
 	// Generate MEMORY.md index.
@@ -117,7 +124,57 @@ func ProjectMemoryProjection(paths *config.Paths, claudeProjectDir string) error
 	return nil
 }
 
+// removeStaleProjections deletes managed memory files left behind by a
+// filename-scheme change (e.g. memoryFilename's entity/concept/summary
+// disambiguation): a managed file not written this run whose (pageType,
+// slug) IS covered by a file that was just written is a duplicate
+// projection of a page now filed under a different name — pure derived
+// state, safe to delete. A managed file whose page isn't in projected at
+// all is left untouched: that's the "wiki page no longer exists" case
+// Reconcile already flags for manual review, not something to silently
+// erase here. Unmanaged files (never projected by us) are never touched.
+//
+// Any edits a stale duplicate carried are expected to have already been
+// folded into the wiki by a preceding Reconcile call — every caller of
+// ProjectMemoryProjection in this codebase runs Reconcile first — so by the
+// time this runs, deleting the duplicate loses no in-flight edits.
+func removeStaleProjections(memDir string, written, projected map[string]bool) error {
+	entries, err := os.ReadDir(memDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read claude memory dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || name == "MEMORY.md" || !strings.HasSuffix(name, ".md") || written[name] {
+			continue
+		}
+		path := filepath.Join(memDir, name)
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		mf, err := parseMemoryFile(path, info.ModTime())
+		if err != nil {
+			return fmt.Errorf("parse memory file %s: %w", name, err)
+		}
+		if !mf.Managed || !projected[string(mf.PageType)+"/"+mf.Slug] {
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove stale projection %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 // memoryPrefix maps EigenMemory page types to Claude Code memory file prefixes.
+// Claude Code's own native memory convention only recognizes four types
+// (user, feedback, project, reference), so entity/concept/summary pages are
+// all filed under the "project" prefix.
 func memoryPrefix(pageType types.PageType) string {
 	switch pageType {
 	case types.PageTypeUser:
@@ -130,6 +187,26 @@ func memoryPrefix(pageType types.PageType) string {
 		return "project"
 	}
 	return ""
+}
+
+// memoryFilename returns the Claude Code memory filename for a wiki page.
+// Slugs are only unique within their own page-type directory (an entity and
+// a project page can both be named "auth"), but memoryPrefix collapses
+// entity/concept/summary/project onto the same "project" prefix — using
+// prefix_slug.md alone would let two distinct wiki pages silently overwrite
+// each other's projection. Disambiguate with the real page type whenever it
+// isn't already implied by the prefix, while keeping the prefix's own
+// natural type (e.g. "project_<slug>.md" for an actual project page)
+// filename-compatible with prior projections.
+func memoryFilename(pageType types.PageType, slug string) string {
+	prefix := memoryPrefix(pageType)
+	if prefix == "" {
+		return ""
+	}
+	if string(pageType) == prefix {
+		return fmt.Sprintf("%s_%s.md", prefix, slug)
+	}
+	return fmt.Sprintf("%s_%s_%s.md", prefix, pageType, slug)
 }
 
 // renderMemoryPage converts a wiki page into Claude Code memory file content.

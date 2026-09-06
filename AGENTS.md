@@ -1,6 +1,6 @@
 # EigenMemory / AGENTS.md — eigenmemory
 
-This file is consumed by all AI agents working on this project, including Zed.
+This file is consumed by all AI agents working on this project — Zed, Codex CLI, Antigravity, and any other AGENTS.md-reading harness. (Claude Code reads `CLAUDE.md` instead; see that file for its extra native-memory reconciliation step.)
 
 ## EigenMemory MCP tools
 
@@ -10,7 +10,7 @@ When connected to the EigenMemory MCP server, prefer these tools:
 - `wiki_query(question)` — natural-language recall over the wiki with citations; falls back from AND to OR ranking when an exact match returns nothing.
 - `wiki_remember(fact, type, tags)` — store durable facts with proper categorization. Prefer this over waiting for a host tool's own automatic memory-saving to catch the fact.
 - `wiki_ingest(source)` — ingest a design doc, transcript, or article into the wiki. Summary-only by design: it archives the raw source and writes a digest page, and does not itself classify the source into a typed directory.
-- `wiki_reconcile(dry_run)` — sync a host tool's native memory files with the wiki (Claude Code only; Zed has no native memory to reconcile). Adopts brand-new native memories into the wiki and merges edits back; pass `dry_run: true` to preview first.
+- `wiki_reconcile(dry_run)` — sync a host tool's native memory files with the wiki. Only implemented for Claude Code today; Zed, Codex CLI, and Antigravity have no eigenmemory-managed native memory to reconcile (they read this wiki purely through the MCP tools above and this file's instructions), so calling it outside Claude Code errors.
 - `wiki_lint()` — run health checks (orphans, broken links, stale pages, index drift) and propose fixes.
 - `wiki_status()` — inspect wiki state, scope, and index health.
 
@@ -23,4 +23,4 @@ When connected to the EigenMemory MCP server, prefer these tools:
 
 ## Cross-tool consistency
 
-Facts stored via this project's EigenMemory are shared with Claude Code. The wiki under `.eigenmemory/wiki/` is the source of truth.
+Facts stored via this project's EigenMemory are shared with every connected tool — Claude Code, Zed, Codex CLI, Antigravity, and anything else pointed at the same `eigenmemory serve --mcp` process. The wiki under `.eigenmemory/wiki/` is the source of truth.

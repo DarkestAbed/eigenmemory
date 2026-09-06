@@ -87,11 +87,10 @@ func ProjectMemoryProjection(paths *config.Paths, claudeProjectDir string) error
 			return err
 		}
 		for _, page := range pages {
-			prefix := memoryPrefix(pageType)
-			if prefix == "" {
+			filename := memoryFilename(pageType, page.Slug)
+			if filename == "" {
 				continue
 			}
-			filename := fmt.Sprintf("%s_%s.md", prefix, page.Slug)
 			content := renderMemoryPage(page, pageType)
 			if err := writeFileAtomic(filepath.Join(memDir, filename), []byte(content)); err != nil {
 				return fmt.Errorf("write memory file %s: %w", filename, err)
@@ -118,6 +117,9 @@ func ProjectMemoryProjection(paths *config.Paths, claudeProjectDir string) error
 }
 
 // memoryPrefix maps EigenMemory page types to Claude Code memory file prefixes.
+// Claude Code's own native memory convention only recognizes four types
+// (user, feedback, project, reference), so entity/concept/summary pages are
+// all filed under the "project" prefix.
 func memoryPrefix(pageType types.PageType) string {
 	switch pageType {
 	case types.PageTypeUser:
@@ -130,6 +132,26 @@ func memoryPrefix(pageType types.PageType) string {
 		return "project"
 	}
 	return ""
+}
+
+// memoryFilename returns the Claude Code memory filename for a wiki page.
+// Slugs are only unique within their own page-type directory (an entity and
+// a project page can both be named "auth"), but memoryPrefix collapses
+// entity/concept/summary/project onto the same "project" prefix — using
+// prefix_slug.md alone would let two distinct wiki pages silently overwrite
+// each other's projection. Disambiguate with the real page type whenever it
+// isn't already implied by the prefix, while keeping the prefix's own
+// natural type (e.g. "project_<slug>.md" for an actual project page)
+// filename-compatible with prior projections.
+func memoryFilename(pageType types.PageType, slug string) string {
+	prefix := memoryPrefix(pageType)
+	if prefix == "" {
+		return ""
+	}
+	if string(pageType) == prefix {
+		return fmt.Sprintf("%s_%s.md", prefix, slug)
+	}
+	return fmt.Sprintf("%s_%s_%s.md", prefix, pageType, slug)
 }
 
 // renderMemoryPage converts a wiki page into Claude Code memory file content.

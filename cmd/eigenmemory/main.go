@@ -110,7 +110,7 @@ var lintCmd = &cobra.Command{
 
 var setupCmd = &cobra.Command{
 	Use:   "setup",
-	Short: "Print MCP configuration snippets for Claude Code or Zed",
+	Short: "Print MCP configuration snippets for Claude Code, Zed, Codex, or Antigravity",
 	RunE: func(c *cobra.Command, _ []string) error {
 		tool, _ := c.Flags().GetString("tool")
 		return cmd.Setup(cmd.SetupOptions{Tool: tool})
@@ -142,7 +142,7 @@ func main() {
 	serveCmd.Flags().Bool("mcp", false, "Run as an MCP server over stdio")
 	rootCmd.AddCommand(serveCmd)
 
-	setupCmd.Flags().String("tool", "", "Tool to configure: claude or zed (required)")
+	setupCmd.Flags().String("tool", "", "Tool to configure: claude, zed, codex, or antigravity (required)")
 	_ = setupCmd.MarkFlagRequired("tool")
 	rootCmd.AddCommand(setupCmd)
 

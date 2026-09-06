@@ -45,20 +45,35 @@ func Setup(opts SetupOptions) error {
   }
 }`)
 	case "zed":
-		fmt.Println("Add this block to `~/.config/zed/settings.json`:")
+		fmt.Println("Add this block to `~/.config/zed/settings.json` (or the project-local `.zed/settings.json`):")
 		fmt.Println()
 		fmt.Println(`{
   "context_servers": {
     "eigenmemory": {
-      "command": {
-        "path": "eigenmemory",
-        "args": ["serve", "--mcp"]
-      }
+      "command": "eigenmemory",
+      "args": ["serve", "--mcp"]
+    }
+  }
+}`)
+	case "codex":
+		fmt.Println("Add this table to `~/.codex/config.toml` (or the project-local `.codex/config.toml` for a trusted project):")
+		fmt.Println()
+		fmt.Println(`[mcp_servers.eigenmemory]
+command = "eigenmemory"
+args = ["serve", "--mcp"]`)
+	case "antigravity":
+		fmt.Println("Add this block to `~/.gemini/config/mcp_config.json` (or the workspace-local `.agents/mcp_config.json`):")
+		fmt.Println()
+		fmt.Println(`{
+  "mcpServers": {
+    "eigenmemory": {
+      "command": "eigenmemory",
+      "args": ["serve", "--mcp"]
     }
   }
 }`)
 	default:
-		return fmt.Errorf("unknown tool %q; supported: claude, zed", opts.Tool)
+		return fmt.Errorf("unknown tool %q; supported: claude, zed, codex, antigravity", opts.Tool)
 	}
 
 	return nil

@@ -74,6 +74,40 @@ func TestSetup_Zed(t *testing.T) {
 	}
 }
 
+func TestSetup_Codex(t *testing.T) {
+	tmp := t.TempDir()
+	isolate(t, tmp)
+
+	if err := Init(InitOptions{ProjectName: "setupproj4", Scope: config.ScopeProject}); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := captureStdout(t, func() error { return Setup(SetupOptions{Tool: "codex"}) })
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if !strings.Contains(out, "mcp_servers.eigenmemory") {
+		t.Errorf("expected codex snippet, got %q", out)
+	}
+}
+
+func TestSetup_Antigravity(t *testing.T) {
+	tmp := t.TempDir()
+	isolate(t, tmp)
+
+	if err := Init(InitOptions{ProjectName: "setupproj5", Scope: config.ScopeProject}); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := captureStdout(t, func() error { return Setup(SetupOptions{Tool: "antigravity"}) })
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if !strings.Contains(out, "mcpServers") {
+		t.Errorf("expected antigravity snippet, got %q", out)
+	}
+}
+
 func TestSetup_UnknownTool(t *testing.T) {
 	tmp := t.TempDir()
 	isolate(t, tmp)

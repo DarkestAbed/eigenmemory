@@ -26,7 +26,7 @@
 
 <div align="center">
 
-<img width="100%" height="100%" alt="Screenshot showing a text-based query example and its output" src="https://github.com/user-attachments/assets/b2dc954c-af7c-4631-9a00-45a837ac44b4" />
+<img width="100%" height="100%" alt="Screenshot showing a text-based query example and its output" src="https://github.com/user-attachments/assets/c4b60822-5179-4e33-a844-c20653fb203a" />
 
 </div>
 

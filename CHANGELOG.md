@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `plugin/skills/memory-workflow/SKILL.md` — a bundled skill teaching the agent when and how to
+  use the EigenMemory MCP tools (keyword-only FTS5 search, `wiki_ingest`'s summary-only design,
+  when `wiki_reconcile` applies), so a project that installs only the Claude Code plugin — without
+  ever running `eigenmemory init` there to generate a `CLAUDE.md`/`AGENTS.md` — still gets that
+  guidance instead of relying solely on the raw MCP tool descriptions.
+
 ## 0.1.9 — 2026-09-13
 
 ### Added

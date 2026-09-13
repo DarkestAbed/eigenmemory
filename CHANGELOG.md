@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Claude Code plugin packaging: `.claude-plugin/marketplace.json` at the repo root and
+  `plugin/.claude-plugin/plugin.json` declaring the `eigenmemory` MCP server, so the repo can be
+  installed with `claude plugin marketplace add DarkestAbed/eigenmemory` and
+  `claude plugin install eigenmemory@eigenmemory` instead of hand-editing `.mcp.json`. The plugin
+  does not bundle the binary — it still must be on `PATH`.
+
 ## 0.1.8 — 2026-09-06
 
 ### Added

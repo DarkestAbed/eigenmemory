@@ -1,7 +1,7 @@
 {
   "name": "eigenmemory",
   "description": "Persistent, cross-tool LLM Wiki for coding harnesses. Adds wiki_recall, wiki_remember, wiki_ingest, wiki_query, wiki_lint, wiki_status, and wiki_reconcile so an agent can recall past decisions and store durable facts across sessions.",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "author": {
     "name": "Javi",
     "url": "https://github.com/DarkestAbed"

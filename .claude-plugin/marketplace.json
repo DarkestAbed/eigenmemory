@@ -10,7 +10,7 @@
       "name": "eigenmemory",
       "source": "./plugin",
       "description": "Persistent, cross-tool LLM Wiki for coding harnesses.",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "author": {
         "name": "Javi",
         "url": "https://github.com/DarkestAbed"

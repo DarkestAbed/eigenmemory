@@ -19,6 +19,7 @@
 [![Go install](https://img.shields.io/badge/Go%20install-available-brightgreen)](https://pkg.go.dev/github.com/DarkestAbed/eigenmemory)
 [![Binaries](https://img.shields.io/badge/Binaries-available-brightgreen)](https://github.com/DarkestAbed/eigenmemory/releases)
 [![MCP server](https://img.shields.io/badge/MCP%20server-available-brightgreen)](#connect-to-claude-code)
+[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code%20plugin-available-brightgreen)](#connect-to-claude-code)
 
 [Quick start](#quick-start) · [Install](#install) · [Usage](#usage) · [MCP tools](#mcp-tools) · [Development](#development)
 
@@ -116,7 +117,18 @@ go install github.com/DarkestAbed/eigenmemory/cmd/eigenmemory@latest
 
 ### Connect to Claude Code
 
-Add to `.mcp.json` in your project root:
+**As a plugin**:
+
+```bash
+claude plugin marketplace add DarkestAbed/eigenmemory
+claude plugin install eigenmemory@eigenmemory
+```
+
+The `eigenmemory` binary must still be on `PATH` — the plugin only declares the MCP server
+(`plugin/.claude-plugin/plugin.json`), it does not bundle the binary. Install it first with any
+of the methods above.
+
+**Or via `.mcp.json`**, add to `.mcp.json` in your project root:
 
 ```json
 {

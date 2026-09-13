@@ -55,6 +55,18 @@ whatever `AGENTS.md`-equivalent file it honors — there's nothing tool-native t
 
 ## 2. Claude Code
 
+**As a plugin** (recommended — no `.mcp.json` to hand-edit):
+
+```bash
+claude plugin marketplace add DarkestAbed/eigenmemory
+claude plugin install eigenmemory@eigenmemory
+```
+
+The `eigenmemory` binary must still be on `PATH` (see [Install](./README.md#install)) — the
+plugin only declares the MCP server, it does not bundle the binary.
+
+**Or via `.mcp.json`**:
+
 ```bash
 eigenmemory setup --tool claude
 ```
